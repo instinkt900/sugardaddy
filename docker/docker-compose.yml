@@ -1,3 +1,8 @@
+# Explicit project name so this never collides with another compose project
+# whose directory also happens to be named "docker" (Compose's default project
+# name is the parent dir). Keeps it isolated from unrelated stacks on the host.
+name: sugardaddy
+
 services:
   sugardaddy:
     build:
