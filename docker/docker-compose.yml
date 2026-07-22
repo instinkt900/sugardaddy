@@ -7,7 +7,9 @@ services:
     container_name: sugardaddy
     restart: always
     ports:
-      - "8080:8080"
+      # Host port is configurable (SUGARDADDY_PORT in .env) so it can coexist
+      # with other services; the container always listens on 8080 internally.
+      - "${SUGARDADDY_PORT:-8080}:8080"
     environment:
       # LibreLinkUp credentials (required for glucose ingestion).
       SUGARDADDY_LIBRE_EMAIL: ${SUGARDADDY_LIBRE_EMAIL}
