@@ -19,10 +19,15 @@ Everything runs on your own infrastructure.
   (deduplicated) in a local SQLite database.
 - **Two web UIs, one backend:**
   - **Phone** (`/`) — input-first: current reading + trend, a compact 24h chart,
-    and fast one-tap logging of insulin and meals.
+    and fast one-tap logging of insulin and meals. The meal name field is a
+    searchable dropdown of your recent + saved meals that prefills carbs and tags.
   - **Desktop** (`/desktop`) — review-first: a large interactive chart (glucose
     line + target band + dose/meal markers) with date-range selection, sortable
     tables with inline **add / edit / delete**, and analysis panels.
+- **Known meals** — a library of reusable meal shortcuts (name + carbs + tags)
+  for fast logging. Fully decoupled from history: logging copies the values into
+  a snapshot, so editing or deleting a shortcut never changes entries you've
+  already logged. Manage them on the desktop; use them from the phone.
 - **Analyses** the timeline: time-in-range, average glucose + estimated GMI,
   high/low counts, and the 2-hour glucose response after each logged meal.
 - **Seeds history** once from an existing Home Assistant install (optional), so
@@ -69,7 +74,7 @@ sugardaddy/
   cli.py         entrypoint: serve | ingest | backfill | init-db
   config.py      one TOML → typed config (secrets from env, never in TOML)
   constants.py   unit conversion, trend arrows, default target range
-  models.py      typed rows (readings, doses, meals)
+  models.py      typed rows (readings, doses, meals, known meals)
   db.py          SQLite schema + queries (UTC epoch, dedup on ts)
   source.py      GlucoseSource ABC + LibreLinkUpSource (pylibrelinkup)
   ingest.py      background poll loop (auth → latest()/graph() → store)
@@ -178,6 +183,33 @@ Credentials: `SUGARDADDY_LIBRE_EMAIL` / `SUGARDADDY_LIBRE_PASSWORD` (env only).
 | `ha_entity` | — | the glucose sensor entity id |
 
 Token: `SUGARDADDY_HA_TOKEN` (env only).
+
+## Roadmap / ideas
+
+Not built yet — captured here so the direction is clear. All of these sit on top
+of the same UTC timeline, so they're additive rather than rewrites.
+
+- **Activity & wearable data (steps, heart rate, workouts).** Bring in
+  Samsung Health / Galaxy Watch metrics to enrich analysis. Two feeds:
+  - *One-time history* — import a Samsung Health data export (the CSVs it
+    produces: daily steps, heart rate, exercise) via a `sugardaddy import-samsung`
+    command. Good for deep retrospective history; not something to repeat weekly.
+  - *Ongoing* — Samsung Health already syncs into Android **Health Connect**, and
+    the Home Assistant Android companion app can expose Health Connect metrics as
+    HA sensors. sugardaddy would then pull activity from HA the same way it can
+    seed glucose from HA — no custom phone app, no Samsung developer approval.
+  - Storage would be a small `activity` table (steps, heart-rate readings,
+    workouts) on the shared timeline, joinable against glucose/meals/insulin.
+- **Trend analysis & prediction.** With glucose + insulin + meals (+ activity)
+  on one timeline, learn per-meal/per-time-of-day response patterns and surface
+  likely highs/lows. Strictly decision-support for review with a clinician — not
+  dosing advice.
+- **Nice-to-haves.** Alerts/notifications on sustained highs/lows; optional auth
+  if ever exposed beyond a trusted LAN/VPN; photo attachments on meals; CSV/export
+  of the combined timeline.
+
+Anything requiring live wearable data depends on the Health Connect → HA feed
+above; the manual export path only makes sense as a one-off seed.
 
 ## Notes & limitations
 
