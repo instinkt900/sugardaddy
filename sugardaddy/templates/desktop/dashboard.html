@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}sugardaddy · desktop{% endblock %}
+{% block body_class %}desktop{% endblock %}
+
+{% block content %}
+<div class="desk-wrap">
+  <header class="desk-header">
+    <h1>sugardaddy</h1>
+    <div class="range-picker">
+      <label>From <input type="datetime-local" id="range-from"></label>
+      <label>To <input type="datetime-local" id="range-to"></label>
+      <div class="range-presets">
+        <button data-hours="12">12h</button>
+        <button data-hours="24">24h</button>
+        <button data-hours="72">3d</button>
+        <button data-hours="168">7d</button>
+        <button data-hours="720">30d</button>
+      </div>
+    </div>
+    <a class="phone-link" href="/">Phone view</a>
+  </header>
+
+  <section class="stats-row" id="stats-row">
+    <div class="stat"><div class="stat-label">Time in range</div><div class="stat-value" id="stat-tir">—</div></div>
+    <div class="stat"><div class="stat-label">Average</div><div class="stat-value" id="stat-avg">—</div></div>
+    <div class="stat"><div class="stat-label">GMI (est.)</div><div class="stat-value" id="stat-gmi">—</div></div>
+    <div class="stat"><div class="stat-label">Lows / Highs</div><div class="stat-value" id="stat-lowhigh">—</div></div>
+    <div class="stat"><div class="stat-label">Readings</div><div class="stat-value" id="stat-count">—</div></div>
+  </section>
+
+  <section class="chart-card big">
+    <canvas id="main-chart" height="120"></canvas>
+  </section>
+
+  <div class="desk-grid">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Insulin</h2>
+        <button class="add-btn" data-add="insulin">+ Add</button>
+      </div>
+      <table class="data-table" id="insulin-table">
+        <thead><tr><th>Time</th><th>Units</th><th>Type</th><th>Note</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Meals</h2>
+        <button class="add-btn" data-add="meal">+ Add</button>
+      </div>
+      <table class="data-table" id="meal-table">
+        <thead><tr><th>Time</th><th>Description</th><th>Carbs</th><th>Tags</th><th>Note</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Post-meal response (2h)</h2>
+    <table class="data-table" id="postmeal-table">
+      <thead><tr><th>Time</th><th>Meal</th><th>Carbs</th><th>Start</th><th>Peak</th><th>Δ Peak</th><th>→ Peak</th><th>End</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <footer class="foot"><span class="muted">v{{ version }}</span></footer>
+</div>
+
+<template id="kinds-data">{{ kinds|join(',') }}</template>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/desktop.js" defer></script>
+{% endblock %}

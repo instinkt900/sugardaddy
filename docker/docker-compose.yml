@@ -1,0 +1,28 @@
+services:
+  sugardaddy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: sugardaddy:latest
+    container_name: sugardaddy
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # LibreLinkUp credentials (required for glucose ingestion).
+      SUGARDADDY_LIBRE_EMAIL: ${SUGARDADDY_LIBRE_EMAIL}
+      SUGARDADDY_LIBRE_PASSWORD: ${SUGARDADDY_LIBRE_PASSWORD}
+      # Only needed for the one-shot `backfill` command; harmless otherwise.
+      SUGARDADDY_HA_TOKEN: ${SUGARDADDY_HA_TOKEN:-}
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+      - sugardaddy-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  sugardaddy-data:

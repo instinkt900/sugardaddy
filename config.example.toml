@@ -1,0 +1,36 @@
+# sugardaddy configuration — one file describes the whole app.
+# Copy to config.toml and edit. Secrets are NOT stored here:
+#   SUGARDADDY_LIBRE_EMAIL / SUGARDADDY_LIBRE_PASSWORD  (LibreLinkUp login)
+#   SUGARDADDY_HA_TOKEN                                  (only for `backfill`)
+
+[librelink]
+# Region code, as understood by the pylibrelinkup APIUrl enum.
+# One of: AU, EU, EU2, US, AE, AP, CA, DE, FR, JP, LA, RU.
+region = "AU"
+# How often to poll for the latest reading (seconds). Libre updates ~every 5 min;
+# 60s captures every reading without hammering the API. Minimum enforced: 15s.
+poll_interval_seconds = 60
+# Only needed if your LibreLinkUp account follows more than one person.
+# patient_id = "00000000-0000-0000-0000-000000000000"
+
+[database]
+# SQLite file. In Docker this lives on the mounted /data volume.
+path = "/data/sugardaddy.db"
+
+[web]
+host = "0.0.0.0"
+port = 8080
+# Display timezone (storage is always UTC). e.g. Australia/Sydney, Australia/Perth.
+timezone = "Australia/Sydney"
+# Display unit: "mmol/L" (Australia) or "mg/dL". Storage is always mg/dL.
+units = "mmol/L"
+# Target range for time-in-range, in the display unit above.
+target_low = 3.9
+target_high = 10.0
+
+[backfill]
+# Only used by the one-shot `sugardaddy backfill` command to seed history from an
+# existing Home Assistant install. Unused at runtime; safe to leave blank.
+ha_url = "http://192.0.2.10:8123"
+ha_entity = "sensor.librelink_glucose"
+# HA long-lived token comes from SUGARDADDY_HA_TOKEN, not this file.

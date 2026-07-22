@@ -1,0 +1,23 @@
+# secrets & local config
+docker/.env
+.env
+docker/config.toml
+config.toml
+*.token
+
+# data
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/

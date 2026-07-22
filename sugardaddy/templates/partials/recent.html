@@ -1,0 +1,33 @@
+<div id="recent" class="recent">
+  <h2>Recent (24h)</h2>
+  {% if not recent.doses and not recent.meals %}
+    <p class="muted">Nothing logged yet.</p>
+  {% endif %}
+  {% if recent.doses %}
+    <h3>Insulin</h3>
+    <ul class="entry-list">
+      {% for d in recent.doses %}
+        <li>
+          <span class="entry-time">{{ d.local }}</span>
+          <span class="entry-main">{{ d.units }}u <span class="tag">{{ d.kind }}</span></span>
+          {% if d.note %}<span class="entry-note">{{ d.note }}</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% if recent.meals %}
+    <h3>Meals</h3>
+    <ul class="entry-list">
+      {% for m in recent.meals %}
+        <li>
+          <span class="entry-time">{{ m.local }}</span>
+          <span class="entry-main">
+            {% if m.description %}{{ m.description }}{% else %}(meal){% endif %}
+            {% if m.carbs_g is not none %}<span class="tag">{{ m.carbs_g }}g</span>{% endif %}
+          </span>
+          {% if m.note %}<span class="entry-note">{{ m.note }}</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
