@@ -84,6 +84,21 @@ input, select {
 }
 input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 
+.combo { display: flex; gap: 6px; align-items: stretch; }
+.combo input[type="text"] { flex: 1; min-width: 0; }
+.combo-btn {
+  white-space: nowrap;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 14px;
+}
+.combo-btn:disabled { opacity: .4; border-color: var(--border); color: var(--muted); cursor: default; }
+.km-status { margin: 0; font-size: 13px; min-height: 1em; }
+
 .big-btn {
   margin-top: 4px;
   padding: 16px;

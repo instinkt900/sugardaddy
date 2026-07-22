@@ -39,10 +39,12 @@
       fetch("/api/timeline" + qs).then((r) => r.json()),
       fetch("/api/entries" + qs).then((r) => r.json()),
       fetch("/api/stats" + qs).then((r) => r.json()),
-    ]).then(([timeline, entries, stats]) => {
+      fetch("/api/known-meals").then((r) => r.json()),
+    ]).then(([timeline, entries, stats, known]) => {
       renderChart(timeline);
       renderTables(entries);
       renderStats(stats);
+      renderKnown(known);
     });
   }
 
@@ -178,6 +180,36 @@
     tr.querySelector('[data-act="cancel"]').onclick = load;
   }
 
+  // ---- known meals (input shortcuts) ----
+  function renderKnown(list) {
+    const tb = document.querySelector("#known-table tbody");
+    tb.innerHTML = "";
+    list.forEach((k) => tb.appendChild(knownRow(k)));
+  }
+
+  function knownRow(k) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(k.name)}</td><td>${k.carbs_g ?? ""}</td><td>${esc(k.tags)}</td>
+      <td class="row-actions"><button class="icon-btn" data-act="edit">Edit</button>
+      <button class="icon-btn danger" data-act="del">✕</button></td>`;
+    tr.querySelector('[data-act="del"]').onclick = () => del("known-meals", k.id);
+    tr.querySelector('[data-act="edit"]').onclick = () => editKnown(tr, k);
+    return tr;
+  }
+
+  function editKnown(tr, k) {
+    tr.innerHTML = `
+      <td><input type="text" value="${attr(k.name)}"></td>
+      <td><input type="number" step="1" min="0" value="${k.carbs_g ?? ""}" style="width:70px"></td>
+      <td><input type="text" value="${attr(k.tags)}"></td>
+      <td class="row-actions"><button class="icon-btn save">Save</button>
+      <button class="icon-btn" data-act="cancel">Cancel</button></td>`;
+    const [name, carbs, tags] = tr.querySelectorAll("input");
+    tr.querySelector(".save").onclick = () =>
+      patch("known-meals", k.id, { name: name.value, carbs_g: carbs.value, tags: tags.value });
+    tr.querySelector('[data-act="cancel"]').onclick = load;
+  }
+
   // ---- add ----
   document.querySelectorAll(".add-btn").forEach((btn) => {
     btn.addEventListener("click", () => addRow(btn.dataset.add));
@@ -197,7 +229,7 @@
       const [ts, units, kind, note] = tr.querySelectorAll("input,select");
       tr.querySelector(".save").onclick = () =>
         create("insulin", { ts: ts.value, units: units.value, kind: kind.value, note: note.value });
-    } else {
+    } else if (type === "meal") {
       tr.innerHTML = `
         <td><input type="datetime-local" value="${nowInput(0)}"></td>
         <td><input type="text" placeholder="description"></td>
@@ -209,6 +241,16 @@
       const [ts, desc, carbs, tags, note] = tr.querySelectorAll("input");
       tr.querySelector(".save").onclick = () =>
         create("meal", { ts: ts.value, description: desc.value, carbs_g: carbs.value, tags: tags.value, note: note.value });
+    } else if (type === "known") {
+      tr.innerHTML = `
+        <td><input type="text" placeholder="name"></td>
+        <td><input type="number" step="1" min="0" placeholder="carbs" style="width:70px"></td>
+        <td><input type="text" placeholder="tags"></td>
+        <td class="row-actions"><button class="icon-btn save">Save</button>
+        <button class="icon-btn" data-act="cancel">Cancel</button></td>`;
+      const [name, carbs, tags] = tr.querySelectorAll("input");
+      tr.querySelector(".save").onclick = () =>
+        create("known-meals", { name: name.value, carbs_g: carbs.value, tags: tags.value });
     }
     tr.querySelector('[data-act="cancel"]').onclick = load;
     tbody.prepend(tr);

@@ -43,5 +43,102 @@
       .catch(() => {});
   }
 
+  // --- known meals (input shortcuts) ---
+  let known = [];
+  const nameEl = document.getElementById("meal-name");
+  const carbsEl = document.getElementById("meal-carbs");
+  const tagsEl = document.getElementById("meal-tags");
+  const idEl = document.getElementById("known-id");
+  const updateBtn = document.getElementById("km-update");
+  const saveNewBtn = document.getElementById("km-savenew");
+  const listEl = document.getElementById("known-meals-list");
+  const statusEl = document.getElementById("km-status");
+  const mealForm = document.getElementById("meal-form");
+
+  function loadKnown() {
+    return fetch("/api/known-meals")
+      .then((r) => r.json())
+      .then((data) => {
+        known = data;
+        listEl.innerHTML = known
+          .map((k) => `<option value="${attr(k.name)}">${carbLabel(k)}</option>`)
+          .join("");
+        syncSelection();
+      })
+      .catch(() => {});
+  }
+
+  function carbLabel(k) {
+    return k.carbs_g != null ? `${k.carbs_g}g` : "";
+  }
+  function attr(s) { return (s || "").replace(/"/g, "&quot;"); }
+
+  // Match the typed name (case-insensitive) to a known meal; prefill + toggle buttons.
+  function matchByName(name) {
+    const n = (name || "").trim().toLowerCase();
+    return known.find((k) => k.name.trim().toLowerCase() === n) || null;
+  }
+
+  function syncSelection(prefill) {
+    const m = matchByName(nameEl.value);
+    if (m) {
+      idEl.value = m.id;
+      updateBtn.disabled = false;
+      if (prefill) {
+        carbsEl.value = m.carbs_g != null ? m.carbs_g : "";
+        tagsEl.value = m.tags || "";
+      }
+    } else {
+      idEl.value = "";
+      updateBtn.disabled = true;
+    }
+  }
+
+  function flash(msg) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ""; }, 2500);
+  }
+
+  function currentFields() {
+    const fd = new FormData();
+    fd.append("name", nameEl.value.trim());
+    fd.append("carbs_g", carbsEl.value);
+    fd.append("tags", tagsEl.value);
+    return fd;
+  }
+
+  if (nameEl) {
+    // 'input' fires both on typing and on picking a datalist option.
+    nameEl.addEventListener("input", () => syncSelection(true));
+
+    updateBtn.addEventListener("click", () => {
+      const id = idEl.value;
+      if (!id) return;
+      fetch(`/api/known-meals/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nameEl.value.trim(), carbs_g: carbsEl.value, tags: tagsEl.value }),
+      }).then(() => loadKnown()).then(() => flash("Saved meal updated."));
+    });
+
+    saveNewBtn.addEventListener("click", () => {
+      if (!nameEl.value.trim()) { flash("Enter a name first."); return; }
+      fetch("/api/known-meals", { method: "POST", body: currentFields() })
+        .then((r) => r.json())
+        .then(() => loadKnown())
+        .then(() => flash("Saved as a new meal."));
+    });
+
+    // Reset combo state after a successful log (form.reset clears fields).
+    mealForm.addEventListener("reset", () => {
+      idEl.value = "";
+      updateBtn.disabled = true;
+      if (statusEl) statusEl.textContent = "";
+    });
+
+    loadKnown();
+  }
+
   window.addEventListener("load", draw);
 })();

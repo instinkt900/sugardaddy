@@ -26,7 +26,7 @@ from sugardaddy.config import Config, load_config
 from sugardaddy.constants import INSULIN_KINDS, to_display, trend_arrow
 from sugardaddy.db import Database
 from sugardaddy.ingest import start_background
-from sugardaddy.models import InsulinDose, Meal
+from sugardaddy.models import InsulinDose, KnownMeal, Meal
 
 log = logging.getLogger("sugardaddy.web")
 
@@ -107,6 +107,9 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "tags": m.tags,
             "note": m.note,
         }
+
+    def known_meal_json(k: KnownMeal) -> dict:
+        return {"id": k.id, "name": k.name, "carbs_g": k.carbs_g, "tags": k.tags}
 
     def recent_context() -> dict:
         start, end = now_epoch() - _DAY, now_epoch()
@@ -289,6 +292,45 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     @app.delete("/api/meal/{meal_id}")
     def delete_meal(meal_id: int):
         ok = db.delete_meal(meal_id)
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    # --- known meals (input shortcuts) ----------------------------------
+
+    @app.get("/api/known-meals")
+    def list_known_meals():
+        return [known_meal_json(k) for k in db.list_known_meals()]
+
+    @app.post("/api/known-meals")
+    def create_known_meal(
+        name: str = Form(...),
+        carbs_g: str = Form(""),
+        tags: str = Form(""),
+    ):
+        name = name.strip()
+        if not name:
+            return JSONResponse({"error": "name required"}, status_code=400)
+        carbs = float(carbs_g) if carbs_g.strip() else None
+        km = KnownMeal(name=name, carbs_g=carbs, tags=tags.strip())
+        km.id = db.add_known_meal(km)
+        return known_meal_json(km)
+
+    @app.patch("/api/known-meals/{known_id}")
+    async def update_known_meal(known_id: int, request: Request):
+        body = await request.json()
+        fields = {}
+        if "name" in body and body["name"].strip():
+            fields["name"] = body["name"].strip()
+        if "carbs_g" in body:
+            c = body["carbs_g"]
+            fields["carbs_g"] = float(c) if c not in ("", None) else None
+        if "tags" in body:
+            fields["tags"] = body["tags"].strip()
+        ok = db.update_known_meal(known_id, **fields)
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    @app.delete("/api/known-meals/{known_id}")
+    def delete_known_meal(known_id: int):
+        ok = db.delete_known_meal(known_id)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
     # --- lifecycle -------------------------------------------------------

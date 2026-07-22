@@ -45,23 +45,31 @@
   </section>
 
   <section id="tab-meal" class="logform hidden">
-    <form hx-post="/api/meal" hx-target="#recent" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) this.reset()">
-      <label>Description
-        <input type="text" name="description" placeholder="e.g. toast + eggs">
+    <form id="meal-form" hx-post="/api/meal" hx-target="#recent" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) this.reset()">
+      <label>Meal
+        <div class="combo">
+          <input type="text" name="description" id="meal-name" list="known-meals-list"
+                 autocomplete="off" placeholder="type a name or pick a saved meal">
+          <button type="button" id="km-update" class="combo-btn" disabled title="Update saved meal">Update</button>
+          <button type="button" id="km-savenew" class="combo-btn" title="Save as a new meal">Save as new</button>
+        </div>
       </label>
+      <datalist id="known-meals-list"></datalist>
+      <input type="hidden" id="known-id" value="">
       <label>Carbs (g)
-        <input type="number" name="carbs_g" step="1" min="0" inputmode="decimal" placeholder="optional">
+        <input type="number" name="carbs_g" id="meal-carbs" step="1" min="0" inputmode="decimal" placeholder="optional">
       </label>
       <label>Tags
-        <input type="text" name="tags" placeholder="optional, comma-separated">
+        <input type="text" name="tags" id="meal-tags" placeholder="optional, comma-separated">
       </label>
       <label>Time
         <input type="datetime-local" name="ts" value="{{ now_input }}">
       </label>
       <label>Note
-        <input type="text" name="note" placeholder="optional">
+        <input type="text" name="note" placeholder="optional (not saved to the shortcut)">
       </label>
       <button type="submit" class="big-btn">Log meal</button>
+      <p id="km-status" class="km-status muted"></p>
     </form>
   </section>
 

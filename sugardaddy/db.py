@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from sugardaddy.models import GlucoseReading, InsulinDose, Meal
+from sugardaddy.models import GlucoseReading, InsulinDose, KnownMeal, Meal
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS glucose_readings (
@@ -40,6 +40,16 @@ CREATE TABLE IF NOT EXISTS meals (
     note        TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_meals_ts ON meals(ts_utc);
+
+-- Reusable meal shortcuts for fast logging. Deliberately NOT referenced by the
+-- meals table: logging copies these values into a history row as a snapshot, so
+-- editing a known meal never changes entries already in the history.
+CREATE TABLE IF NOT EXISTS known_meals (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    name    TEXT NOT NULL,
+    carbs_g REAL,
+    tags    TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -155,6 +165,29 @@ class Database:
             ).fetchall()
         return [_meal(r) for r in rows]
 
+    # --- known meals (input shortcuts) ----------------------------------
+
+    def list_known_meals(self) -> list[KnownMeal]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM known_meals ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+        return [_known_meal(r) for r in rows]
+
+    def add_known_meal(self, k: KnownMeal) -> int:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO known_meals (name, carbs_g, tags) VALUES (?, ?, ?)",
+                (k.name, k.carbs_g, k.tags),
+            )
+            return cur.lastrowid
+
+    def update_known_meal(self, known_id: int, **fields) -> bool:
+        return self._update("known_meals", known_id, fields, {"name", "carbs_g", "tags"})
+
+    def delete_known_meal(self, known_id: int) -> bool:
+        return self._delete("known_meals", known_id)
+
     # --- generic helpers -------------------------------------------------
 
     def _update(self, table: str, row_id: int, fields: dict, allowed: set[str]) -> bool:
@@ -203,4 +236,13 @@ def _meal(row: sqlite3.Row) -> Meal:
         description=row["description"],
         tags=row["tags"],
         note=row["note"],
+    )
+
+
+def _known_meal(row: sqlite3.Row) -> KnownMeal:
+    return KnownMeal(
+        id=row["id"],
+        name=row["name"],
+        carbs_g=row["carbs_g"],
+        tags=row["tags"],
     )

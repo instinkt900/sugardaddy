@@ -35,3 +35,14 @@ class Meal:
     tags: str = ""
     note: str = ""
     id: int | None = None
+
+
+@dataclass
+class KnownMeal:
+    """A reusable meal shortcut for fast logging. Not linked to history entries —
+    logging copies its values into a Meal snapshot."""
+
+    name: str
+    carbs_g: float | None = None
+    tags: str = ""
+    id: int | None = None
