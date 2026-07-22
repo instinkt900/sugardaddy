@@ -43,8 +43,8 @@
       .catch(() => {});
   }
 
-  // --- known meals (input shortcuts) ---
-  let known = [];
+  // --- meal suggestions (saved shortcuts + recently logged meals) ---
+  let suggestions = [];
   const nameEl = document.getElementById("meal-name");
   const carbsEl = document.getElementById("meal-carbs");
   const tagsEl = document.getElementById("meal-tags");
@@ -55,35 +55,37 @@
   const statusEl = document.getElementById("km-status");
   const mealForm = document.getElementById("meal-form");
 
-  function loadKnown() {
-    return fetch("/api/known-meals")
+  function loadSuggestions() {
+    return fetch("/api/meal-suggestions")
       .then((r) => r.json())
       .then((data) => {
-        known = data;
-        listEl.innerHTML = known
-          .map((k) => `<option value="${attr(k.name)}">${carbLabel(k)}</option>`)
+        suggestions = data;
+        listEl.innerHTML = suggestions
+          .map((s) => `<option value="${attr(s.name)}">${carbLabel(s)}</option>`)
           .join("");
-        syncSelection();
+        syncSelection(false);
       })
       .catch(() => {});
   }
 
-  function carbLabel(k) {
-    return k.carbs_g != null ? `${k.carbs_g}g` : "";
+  function carbLabel(s) {
+    return s.carbs_g != null ? `${s.carbs_g}g` : "";
   }
   function attr(s) { return (s || "").replace(/"/g, "&quot;"); }
 
-  // Match the typed name (case-insensitive) to a known meal; prefill + toggle buttons.
+  // Match the typed name (case-insensitive) to a suggestion; prefill + toggle buttons.
   function matchByName(name) {
     const n = (name || "").trim().toLowerCase();
-    return known.find((k) => k.name.trim().toLowerCase() === n) || null;
+    return suggestions.find((s) => s.name.trim().toLowerCase() === n) || null;
   }
 
   function syncSelection(prefill) {
     const m = matchByName(nameEl.value);
     if (m) {
-      idEl.value = m.id;
-      updateBtn.disabled = false;
+      // Update only applies to saved shortcuts (known_id); history-only matches
+      // still prefill and can be saved as a new shortcut.
+      idEl.value = m.known_id || "";
+      updateBtn.disabled = !m.known_id;
       if (prefill) {
         carbsEl.value = m.carbs_g != null ? m.carbs_g : "";
         tagsEl.value = m.tags || "";
@@ -119,25 +121,27 @@
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: nameEl.value.trim(), carbs_g: carbsEl.value, tags: tagsEl.value }),
-      }).then(() => loadKnown()).then(() => flash("Saved meal updated."));
+      }).then(() => loadSuggestions()).then(() => flash("Saved meal updated."));
     });
 
     saveNewBtn.addEventListener("click", () => {
       if (!nameEl.value.trim()) { flash("Enter a name first."); return; }
       fetch("/api/known-meals", { method: "POST", body: currentFields() })
         .then((r) => r.json())
-        .then(() => loadKnown())
+        .then(() => loadSuggestions())
         .then(() => flash("Saved as a new meal."));
     });
 
-    // Reset combo state after a successful log (form.reset clears fields).
+    // Reset combo state after a successful log, and refresh suggestions so the
+    // just-logged meal becomes available for next time.
     mealForm.addEventListener("reset", () => {
       idEl.value = "";
       updateBtn.disabled = true;
       if (statusEl) statusEl.textContent = "";
+      loadSuggestions();
     });
 
-    loadKnown();
+    loadSuggestions();
   }
 
   window.addEventListener("load", draw);

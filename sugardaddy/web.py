@@ -300,6 +300,25 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     def list_known_meals():
         return [known_meal_json(k) for k in db.list_known_meals()]
 
+    @app.get("/api/meal-suggestions")
+    def meal_suggestions():
+        """Autocomplete source for the meal name field: saved shortcuts first,
+        then recently logged meal names not already covered by a shortcut. Each
+        item carries carbs/tags for prefill; known_id is set only for shortcuts."""
+        out: list[dict] = []
+        seen: set[str] = set()
+        for k in db.list_known_meals():
+            key = k.name.strip().lower()
+            seen.add(key)
+            out.append({"name": k.name, "carbs_g": k.carbs_g, "tags": k.tags, "known_id": k.id})
+        for m in db.recent_meal_names():
+            key = m["name"].strip().lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"name": m["name"], "carbs_g": m["carbs_g"], "tags": m["tags"], "known_id": None})
+        return out
+
     @app.post("/api/known-meals")
     def create_known_meal(
         name: str = Form(...),

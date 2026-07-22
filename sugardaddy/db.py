@@ -165,6 +165,19 @@ class Database:
             ).fetchall()
         return [_meal(r) for r in rows]
 
+    def recent_meal_names(self, limit: int = 300) -> list[dict]:
+        """Distinct meal names from history, most-recent first, each carrying the
+        carbs/tags from its latest entry. SQLite returns bare columns from the
+        same row as MAX() here, so carbs_g/tags come from the newest occurrence."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT description AS name, carbs_g, tags, MAX(ts_utc) AS t "
+                "FROM meals WHERE TRIM(description) <> '' "
+                "GROUP BY description COLLATE NOCASE ORDER BY t DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [{"name": r["name"], "carbs_g": r["carbs_g"], "tags": r["tags"]} for r in rows]
+
     # --- known meals (input shortcuts) ----------------------------------
 
     def list_known_meals(self) -> list[KnownMeal]:
