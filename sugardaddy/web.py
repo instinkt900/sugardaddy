@@ -16,7 +16,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -177,6 +177,40 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     @app.get("/healthz", response_class=JSONResponse)
     def healthz():
         return {"status": "ok", "readings": db.reading_count()}
+
+    # --- PWA (installable web app) --------------------------------------
+
+    _MANIFEST = {
+        "name": "sugardaddy",
+        "short_name": "sugardaddy",
+        "description": "Glucose, insulin and meal logging",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#12141a",
+        "theme_color": "#12141a",
+        "icons": [
+            {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/static/icons/icon-maskable-512.png", "sizes": "512x512",
+             "type": "image/png", "purpose": "maskable"},
+        ],
+    }
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        return JSONResponse(_MANIFEST, media_type="application/manifest+json")
+
+    @app.get("/sw.js")
+    def service_worker():
+        # Served from root so its scope covers the whole app (a SW under /static/
+        # could only control /static/). no-cache so updates roll out on reload.
+        return FileResponse(
+            _HERE / "static" / "sw.js",
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-cache"},
+        )
 
     @app.get("/api/current")
     def api_current():
