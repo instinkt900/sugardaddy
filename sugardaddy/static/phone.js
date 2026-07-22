@@ -43,57 +43,88 @@
       .catch(() => {});
   }
 
-  // --- meal suggestions (saved shortcuts + recently logged meals) ---
+  // --- meal suggestions: custom combobox (saved shortcuts + recent meals) ---
+  // A native <datalist> proved unreliable on mobile (won't open, autocomplete
+  // quirks), so this is a self-contained dropdown we fully control.
   let suggestions = [];
+  let activeIdx = -1;
+  let filteredNow = [];
   const nameEl = document.getElementById("meal-name");
   const carbsEl = document.getElementById("meal-carbs");
   const tagsEl = document.getElementById("meal-tags");
   const idEl = document.getElementById("known-id");
   const updateBtn = document.getElementById("km-update");
   const saveNewBtn = document.getElementById("km-savenew");
-  const listEl = document.getElementById("known-meals-list");
+  const listEl = document.getElementById("meal-suggest");
   const statusEl = document.getElementById("km-status");
   const mealForm = document.getElementById("meal-form");
 
   function loadSuggestions() {
     return fetch("/api/meal-suggestions")
       .then((r) => r.json())
-      .then((data) => {
-        suggestions = data;
-        listEl.innerHTML = suggestions
-          .map((s) => `<option value="${attr(s.name)}">${carbLabel(s)}</option>`)
-          .join("");
-        syncSelection(false);
-      })
+      .then((data) => { suggestions = data; syncSelection(); })
       .catch(() => {});
   }
 
-  function carbLabel(s) {
-    return s.carbs_g != null ? `${s.carbs_g}g` : "";
+  function carbLabel(s) { return s.carbs_g != null ? `${s.carbs_g}g` : ""; }
+  function esc(s) {
+    return (s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   }
-  function attr(s) { return (s || "").replace(/"/g, "&quot;"); }
 
-  // Match the typed name (case-insensitive) to a suggestion; prefill + toggle buttons.
   function matchByName(name) {
     const n = (name || "").trim().toLowerCase();
     return suggestions.find((s) => s.name.trim().toLowerCase() === n) || null;
   }
 
-  function syncSelection(prefill) {
+  // Reflect an exact-name match in the hidden id + Update button (no prefill).
+  function syncSelection() {
     const m = matchByName(nameEl.value);
-    if (m) {
-      // Update only applies to saved shortcuts (known_id); history-only matches
-      // still prefill and can be saved as a new shortcut.
-      idEl.value = m.known_id || "";
-      updateBtn.disabled = !m.known_id;
-      if (prefill) {
-        carbsEl.value = m.carbs_g != null ? m.carbs_g : "";
-        tagsEl.value = m.tags || "";
-      }
+    idEl.value = m && m.known_id ? m.known_id : "";
+    updateBtn.disabled = !(m && m.known_id);
+  }
+
+  function currentFilter() {
+    const q = nameEl.value.trim().toLowerCase();
+    return q ? suggestions.filter((s) => s.name.toLowerCase().includes(q)) : suggestions;
+  }
+
+  function openList() {
+    filteredNow = currentFilter();
+    activeIdx = -1;
+    if (!suggestions.length) return; // nothing saved/logged yet
+    if (!filteredNow.length) {
+      listEl.innerHTML = `<li class="empty" aria-disabled="true">No matching meals</li>`;
     } else {
-      idEl.value = "";
-      updateBtn.disabled = true;
+      listEl.innerHTML = filteredNow
+        .map((s, i) => `<li role="option" data-i="${i}"><span>${esc(s.name)}</span><span class="s-carb">${carbLabel(s)}</span></li>`)
+        .join("");
+      listEl.querySelectorAll("li[data-i]").forEach((li) => {
+        // pointerdown + preventDefault keeps the input focused through the tap.
+        li.addEventListener("pointerdown", (e) => { e.preventDefault(); pick(filteredNow[+li.dataset.i]); });
+      });
     }
+    listEl.hidden = false;
+    nameEl.setAttribute("aria-expanded", "true");
+  }
+
+  function closeList() {
+    listEl.hidden = true;
+    activeIdx = -1;
+    nameEl.setAttribute("aria-expanded", "false");
+  }
+
+  function highlight() {
+    listEl.querySelectorAll("li[data-i]").forEach((li, i) => li.classList.toggle("active", i === activeIdx));
+  }
+
+  function pick(s) {
+    if (!s) return;
+    nameEl.value = s.name;
+    carbsEl.value = s.carbs_g != null ? s.carbs_g : "";
+    tagsEl.value = s.tags || "";
+    idEl.value = s.known_id || "";
+    updateBtn.disabled = !s.known_id;
+    closeList();
   }
 
   function flash(msg) {
@@ -111,8 +142,20 @@
   }
 
   if (nameEl) {
-    // 'input' fires both on typing and on picking a datalist option.
-    nameEl.addEventListener("input", () => syncSelection(true));
+    nameEl.addEventListener("focus", openList);
+    nameEl.addEventListener("click", openList);
+    nameEl.addEventListener("input", () => { syncSelection(); openList(); });
+    nameEl.addEventListener("blur", () => setTimeout(closeList, 120));
+
+    nameEl.addEventListener("keydown", (e) => {
+      if (listEl.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) { openList(); return; }
+      const n = listEl.querySelectorAll("li[data-i]").length;
+      if (e.key === "ArrowDown") { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, n - 1); highlight(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); highlight(); }
+      else if (e.key === "Enter") {
+        if (!listEl.hidden && activeIdx >= 0) { e.preventDefault(); pick(filteredNow[activeIdx]); }
+      } else if (e.key === "Escape") { closeList(); }
+    });
 
     updateBtn.addEventListener("click", () => {
       const id = idEl.value;
@@ -138,6 +181,7 @@
       idEl.value = "";
       updateBtn.disabled = true;
       if (statusEl) statusEl.textContent = "";
+      closeList();
       loadSuggestions();
     });
 

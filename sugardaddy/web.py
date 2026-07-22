@@ -52,6 +52,15 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     app = FastAPI(title="sugardaddy", version=__version__)
     app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 
+    @app.middleware("http")
+    async def revalidate_static(request: Request, call_next):
+        # Force the browser to revalidate static assets so JS/CSS updates always
+        # take effect on reload (cheap 304s via ETag). Avoids stale-cache confusion.
+        resp = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     # --- time helpers ----------------------------------------------------
 
     def now_epoch() -> int:

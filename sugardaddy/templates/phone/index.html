@@ -48,13 +48,16 @@
     <form id="meal-form" hx-post="/api/meal" hx-target="#recent" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) this.reset()">
       <label>Meal
         <div class="combo">
-          <input type="text" name="description" id="meal-name" list="known-meals-list"
-                 autocomplete="off" placeholder="type or pick a recent/saved meal">
+          <div class="combo-field">
+            <input type="text" name="description" id="meal-name" autocomplete="off"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="meal-suggest"
+                   placeholder="type or pick a recent/saved meal">
+            <ul id="meal-suggest" class="combo-list" role="listbox" hidden></ul>
+          </div>
           <button type="button" id="km-update" class="combo-btn" disabled title="Update saved meal">Update</button>
           <button type="button" id="km-savenew" class="combo-btn" title="Save as a new meal">Save as new</button>
         </div>
       </label>
-      <datalist id="known-meals-list"></datalist>
       <input type="hidden" id="known-id" value="">
       <label>Carbs (g)
         <input type="number" name="carbs_g" id="meal-carbs" step="1" min="0" inputmode="decimal" placeholder="optional">

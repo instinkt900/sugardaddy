@@ -85,7 +85,28 @@ input, select {
 input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 
 .combo { display: flex; gap: 6px; align-items: stretch; }
-.combo input[type="text"] { flex: 1; min-width: 0; }
+.combo-field { position: relative; flex: 1; min-width: 0; }
+.combo-field input[type="text"] { width: 100%; }
+.combo-list {
+  position: absolute;
+  left: 0; right: 0; top: calc(100% + 4px);
+  z-index: 30;
+  margin: 0; padding: 4px;
+  list-style: none;
+  background: var(--card-2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+}
+.combo-list li {
+  display: flex; justify-content: space-between; gap: 10px; align-items: center;
+  padding: 12px; border-radius: 8px; cursor: pointer; font-size: 15px;
+}
+.combo-list li.active, .combo-list li:hover { background: var(--card); }
+.combo-list li .s-carb { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.combo-list li.empty { color: var(--muted); cursor: default; justify-content: flex-start; }
 .combo-btn {
   white-space: nowrap;
   padding: 0 12px;
