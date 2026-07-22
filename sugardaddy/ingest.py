@@ -58,7 +58,11 @@ def ingest_loop(cfg: Config, db: Database, stop: threading.Event | None = None) 
     while True:
         try:
             if not did_initial_sync:
+                # Seed recent history (graph() lags ~20 min), then immediately
+                # grab the live reading so we're current from the first cycle
+                # rather than showing a stale graph point for the first minute.
                 sync_recent(db, source)
+                poll_latest(db, source)
                 did_initial_sync = True
             else:
                 poll_latest(db, source)
