@@ -22,6 +22,7 @@
         <li>
           <span class="entry-time">{{ m.local }}</span>
           <span class="entry-main">
+            {% if m.meal_type %}<span class="tag">{{ m.meal_type|capitalize }}</span>{% endif %}
             {{ m.label }}
             {% if m.total_carbs is not none %}<span class="tag">{{ m.total_carbs }}g</span>{% endif %}
             {% if m.total_calories is not none %}<span class="tag">{{ m.total_calories }} cal</span>{% endif %}

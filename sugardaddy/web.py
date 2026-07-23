@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 from sugardaddy import __version__
 from sugardaddy.analysis import post_meal_responses, summarize
 from sugardaddy.config import Config, load_config
-from sugardaddy.constants import INSULIN_KINDS, to_display, trend_arrow
+from sugardaddy.constants import INSULIN_KINDS, MEAL_TYPES, to_display, trend_arrow
 from sugardaddy.db import Database
 from sugardaddy.ingest import start_background
 from sugardaddy.models import (
@@ -194,6 +194,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "local": local_str(m.ts_utc),
             "input": local_input(m.ts_utc),
             "name": m.name,
+            "meal_type": m.meal_type,
             "note": m.note,
             "label": m.label,
             "total_carbs": m.total_carbs,
@@ -261,6 +262,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
                 "current": current_context(),
                 "recent": recent_context(),
                 "kinds": INSULIN_KINDS,
+                "meal_types": MEAL_TYPES,
                 "now_input": local_input(now_epoch()),
                 "version": __version__,
             },
@@ -274,6 +276,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             {
                 "cfg": cfg,
                 "kinds": INSULIN_KINDS,
+                "meal_types": MEAL_TYPES,
                 "now_input": local_input(now_epoch()),
                 "version": __version__,
             },
@@ -394,6 +397,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         meal = Meal(
             ts_utc=parse_local(body.get("ts")),
             name=name,
+            meal_type=(body.get("meal_type") or "").strip(),
             note=(body.get("note") or "").strip(),
             items=_parse_meal_items(body.get("items")),
         )
@@ -441,6 +445,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             fields["ts_utc"] = parse_local(body["ts"])
         if "name" in body:
             fields["name"] = (body["name"] or "").strip()
+        if "meal_type" in body:
+            fields["meal_type"] = (body["meal_type"] or "").strip()
         if "note" in body:
             fields["note"] = (body["note"] or "").strip()
         items = _parse_meal_items(body["items"]) if "items" in body else None

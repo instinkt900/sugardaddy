@@ -62,6 +62,7 @@ class Meal:
 
     ts_utc: int
     name: str = ""
+    meal_type: str = ""  # breakfast | lunch | dinner | snack | "" (unspecified)
     note: str = ""
     items: list[MealItem] = field(default_factory=list)
     id: int | None = None

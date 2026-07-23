@@ -56,10 +56,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_foods_name ON foods(name COLLATE NOCASE);
 
 -- Logged meals: a header on the timeline...
 CREATE TABLE IF NOT EXISTS meals (
-    id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts_utc INTEGER NOT NULL,
-    name   TEXT    NOT NULL DEFAULT '',
-    note   TEXT    NOT NULL DEFAULT ''
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_utc    INTEGER NOT NULL,
+    name      TEXT    NOT NULL DEFAULT '',
+    meal_type TEXT    NOT NULL DEFAULT '',
+    note      TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_meals_ts ON meals(ts_utc);
 
@@ -131,6 +132,9 @@ class Database:
             if self._table_exists(conn, "meal_templates"):
                 self._dedupe_meal_templates(conn)
             conn.executescript(_SCHEMA)
+            # Add columns introduced after a table first shipped (idempotent).
+            if not self._has_column(conn, "meals", "meal_type"):
+                conn.execute("ALTER TABLE meals ADD COLUMN meal_type TEXT NOT NULL DEFAULT ''")
             self._migrate_legacy(conn, legacy_meals)
 
     def _dedupe_foods(self, conn: sqlite3.Connection) -> None:
@@ -340,8 +344,8 @@ class Database:
     def add_meal(self, m: Meal) -> int:
         with self.connect() as conn:
             cur = conn.execute(
-                "INSERT INTO meals (ts_utc, name, note) VALUES (?, ?, ?)",
-                (m.ts_utc, m.name, m.note),
+                "INSERT INTO meals (ts_utc, name, meal_type, note) VALUES (?, ?, ?, ?)",
+                (m.ts_utc, m.name, m.meal_type, m.note),
             )
             meal_id = cur.lastrowid
             self._insert_meal_items(conn, meal_id, m.items)
@@ -363,7 +367,7 @@ class Database:
         """Update header fields and (optionally) replace the whole plate."""
         with self.connect() as conn:
             changed = False
-            cols = {k: v for k, v in fields.items() if k in {"ts_utc", "name", "note"} and v is not None}
+            cols = {k: v for k, v in fields.items() if k in {"ts_utc", "name", "meal_type", "note"} and v is not None}
             if cols:
                 assignments = ", ".join(f"{k} = ?" for k in cols)
                 cur = conn.execute(
@@ -568,7 +572,14 @@ def _food(row: sqlite3.Row) -> Food:
 
 
 def _meal(row: sqlite3.Row) -> Meal:
-    return Meal(id=row["id"], ts_utc=row["ts_utc"], name=row["name"], note=row["note"], items=[])
+    return Meal(
+        id=row["id"],
+        ts_utc=row["ts_utc"],
+        name=row["name"],
+        meal_type=row["meal_type"],
+        note=row["note"],
+        items=[],
+    )
 
 
 def _meal_item(row: sqlite3.Row) -> MealItem:

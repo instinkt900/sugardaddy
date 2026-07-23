@@ -150,6 +150,7 @@
     const countEl = document.getElementById("food-count");
     const addBtn = document.getElementById("add-to-plate");
     const libBtn = document.getElementById("save-to-library");
+    const typeEl = document.getElementById("meal-type");
     const tsEl = document.getElementById("meal-ts");
     const noteEl = document.getElementById("meal-note");
     const logBtn = document.getElementById("log-meal");
@@ -229,7 +230,7 @@
 
     function resetBuilder() {
       plate = [];
-      nameEl.value = ""; noteEl.value = "";
+      nameEl.value = ""; noteEl.value = ""; typeEl.value = "";
       tsEl.value = nowInput();
       renderPlate();
     }
@@ -289,8 +290,8 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ts: tsEl.value, name: nameEl.value.trim(), note: noteEl.value.trim(),
-          items: plate,
+          ts: tsEl.value, name: nameEl.value.trim(), meal_type: typeEl.value,
+          note: noteEl.value.trim(), items: plate,
         }),
       })
         .then((r) => r.json())

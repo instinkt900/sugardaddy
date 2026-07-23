@@ -57,6 +57,13 @@
         </div>
       </label>
 
+      <label>Type
+        <select id="meal-type">
+          <option value="">—</option>
+          {% for t in meal_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+        </select>
+      </label>
+
       <ul id="plate-list" class="plate-list"></ul>
       <p id="plate-empty" class="muted plate-empty">No items yet — add foods below.</p>
       <div id="plate-totals" class="plate-totals muted"></div>

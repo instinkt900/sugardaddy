@@ -18,6 +18,9 @@ DEFAULT_TARGET_HIGH_MMOL = 10.0
 # Insulin dose kinds we accept.
 INSULIN_KINDS = ("bolus", "basal", "correction")
 
+# Meal-of-day categories offered when logging a meal (blank = unspecified).
+MEAL_TYPES = ("breakfast", "lunch", "dinner", "snack")
+
 # LibreLinkUp reports a trend as an integer 1..5; map to a human arrow.
 TREND_ARROWS = {
     1: "↓↓",  # falling quickly

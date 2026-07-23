@@ -3,6 +3,8 @@
 // meal templates. Live auto-refresh, paused while anything is mid-edit.
 (function () {
   const KINDS = (document.getElementById("kinds-data").textContent || "bolus").split(",");
+  const MEAL_TYPES = (document.getElementById("mealtypes-data").textContent || "").split(",").filter(Boolean);
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
   let chart = null;
   let FOODS = []; // cached food library for item pickers/datalist
 
@@ -249,8 +251,8 @@
   // ---- meals (composite: plate of items) ----
   function mealRow(m) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${m.local}</td><td>${esc(m.label)}</td><td>${m.total_carbs ?? ""}</td>
-      <td>${m.total_calories ?? ""}</td><td>${esc(m.note)}</td>
+    tr.innerHTML = `<td>${m.local}</td><td>${cap(esc(m.meal_type))}</td><td>${esc(m.label)}</td>
+      <td>${m.total_carbs ?? ""}</td><td>${m.total_calories ?? ""}</td><td>${esc(m.note)}</td>
       <td class="row-actions"><button class="icon-btn" data-act="edit">Edit</button>
       <button class="icon-btn danger" data-act="del">✕</button></td>`;
     tr.querySelector('[data-act="del"]').onclick = () => del("meal", m.id);
@@ -258,10 +260,17 @@
     return tr;
   }
 
+  function typeOptions(selected) {
+    const opts = ['<option value="">—</option>'];
+    MEAL_TYPES.forEach((t) => opts.push(`<option value="${t}" ${t === selected ? "selected" : ""}>${cap(t)}</option>`));
+    return opts.join("");
+  }
+
   function openMealEditor(tr, m) {
-    tr.innerHTML = `<td colspan="6"><div class="meal-editor">
+    tr.innerHTML = `<td colspan="7"><div class="meal-editor">
       <div class="me-head">
         <label>Time <input type="datetime-local" class="me-ts" value="${m ? m.input : nowInput(0)}"></label>
+        <label>Type <select class="me-type">${typeOptions(m ? m.meal_type : "")}</select></label>
         <label>Name <input type="text" class="me-name" value="${m ? attr(m.name) : ""}" placeholder="optional"></label>
         <label>Note <input type="text" class="me-note" value="${m ? attr(m.note) : ""}" placeholder="optional"></label>
       </div>
@@ -285,6 +294,7 @@
       const body = {
         ts: root.querySelector(".me-ts").value,
         name: root.querySelector(".me-name").value,
+        meal_type: root.querySelector(".me-type").value,
         note: root.querySelector(".me-note").value,
         items: readItems(tbody),
       };
