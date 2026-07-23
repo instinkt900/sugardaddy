@@ -28,8 +28,9 @@ Everything runs on your own infrastructure.
     food library and saved meals.
 - **Composite meals** — a meal is a plate of **foods**, each with a count (e.g.
   1 sandwich + 1 juice + 2 biscuits). Carbs and calories total automatically.
-- **Food library** — reusable foods (name, description, carbs, calories, tags)
-  with full add/edit/delete, shared across every device.
+- **Food library** — reusable foods (name, description, carbs, calories) with
+  full add/edit/delete, shared across every device. Names are unique
+  (case-insensitive): re-saving a name updates the existing food.
 - **Saved meals** — named plates for fast logging, with **Update / Save as new**.
   They are **live-linked** to the food library, so correcting a food updates
   every saved meal that uses it — but **history is a snapshot**: editing or

@@ -208,7 +208,6 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "description": f.description,
             "carbs_g": f.carbs_g,
             "calories": f.calories,
-            "tags": f.tags,
         }
 
     def meal_template_json(t: MealTemplate) -> dict:
@@ -466,7 +465,6 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             description=(body.get("description") or "").strip(),
             carbs_g=_opt_num(body.get("carbs_g")),
             calories=_opt_num(body.get("calories")),
-            tags=(body.get("tags") or "").strip(),
         )
         # add_food upserts by name — return the stored (possibly merged) row.
         return food_json(db.get_food(db.add_food(food)))
@@ -488,8 +486,6 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             fields["carbs_g"] = _opt_num(body["carbs_g"])
         if "calories" in body:
             fields["calories"] = _opt_num(body["calories"])
-        if "tags" in body:
-            fields["tags"] = (body["tags"] or "").strip()
         ok = db.update_food(food_id, **fields)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 

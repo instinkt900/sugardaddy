@@ -215,7 +215,7 @@
   function foodRow(f) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${esc(f.name)}</td><td>${esc(f.description)}</td><td>${f.carbs_g ?? ""}</td>
-      <td>${f.calories ?? ""}</td><td>${esc(f.tags)}</td>
+      <td>${f.calories ?? ""}</td>
       <td class="row-actions"><button class="icon-btn" data-act="edit">Edit</button>
       <button class="icon-btn danger" data-act="del">✕</button></td>`;
     tr.querySelector('[data-act="del"]').onclick = () => del("foods", f.id);
@@ -230,7 +230,6 @@
       <td><input type="text" class="f-desc" value="${attr(f.description || "")}" placeholder="description"></td>
       <td><input type="number" step="1" min="0" class="f-carbs" value="${f.carbs_g ?? ""}" placeholder="carbs" style="width:66px"></td>
       <td><input type="number" step="1" min="0" class="f-cal" value="${f.calories ?? ""}" placeholder="cal" style="width:66px"></td>
-      <td><input type="text" class="f-tags" value="${attr(f.tags || "")}" placeholder="tags"></td>
       <td class="row-actions"><button class="icon-btn save">Save</button>
       <button class="icon-btn" data-act="cancel">Cancel</button></td>`;
   }
@@ -240,7 +239,6 @@
       description: tr.querySelector(".f-desc").value,
       carbs_g: tr.querySelector(".f-carbs").value,
       calories: tr.querySelector(".f-cal").value,
-      tags: tr.querySelector(".f-tags").value,
     };
   }
   function editFood(tr, f) {

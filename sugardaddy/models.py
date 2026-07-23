@@ -37,7 +37,6 @@ class Food:
     description: str = ""
     carbs_g: float | None = None
     calories: float | None = None
-    tags: str = ""
     id: int | None = None
 
 

@@ -48,8 +48,7 @@ CREATE TABLE IF NOT EXISTS foods (
     name        TEXT    NOT NULL,
     description TEXT    NOT NULL DEFAULT '',
     carbs_g     REAL,
-    calories    REAL,
-    tags        TEXT    NOT NULL DEFAULT ''
+    calories    REAL
 );
 -- Food names are unique (case-insensitive): re-saving a name updates the
 -- existing food rather than creating a duplicate.
@@ -123,6 +122,8 @@ class Database:
             if self._table_exists(conn, "foods"):
                 conn.execute("DROP INDEX IF EXISTS idx_foods_name")
                 self._dedupe_foods(conn)
+                if self._has_column(conn, "foods", "tags"):
+                    conn.execute("ALTER TABLE foods DROP COLUMN tags")
             conn.executescript(_SCHEMA)
             self._migrate_legacy(conn, legacy_meals)
 
@@ -130,7 +131,7 @@ class Database:
         """Merge case-insensitive duplicate foods into the earliest row: fill any
         blank fields from the dupes, repoint soft references, then delete them."""
         rows = conn.execute(
-            "SELECT id, name, description, carbs_g, calories, tags FROM foods ORDER BY id"
+            "SELECT id, name, description, carbs_g, calories FROM foods ORDER BY id"
         ).fetchall()
         keep_by_name: dict[str, int] = {}
         have_items = self._table_exists(conn, "meal_items")
@@ -145,10 +146,9 @@ class Database:
                 "UPDATE foods SET "
                 "description = CASE WHEN COALESCE(description,'')='' THEN ? ELSE description END, "
                 "carbs_g = COALESCE(carbs_g, ?), "
-                "calories = COALESCE(calories, ?), "
-                "tags = CASE WHEN COALESCE(tags,'')='' THEN ? ELSE tags END "
+                "calories = COALESCE(calories, ?) "
                 "WHERE id = ?",
-                (r["description"] or "", r["carbs_g"], r["calories"], r["tags"] or "", keep),
+                (r["description"] or "", r["carbs_g"], r["calories"], keep),
             )
             if have_items:
                 conn.execute("UPDATE meal_items SET food_id=? WHERE food_id=?", (keep, r["id"]))
@@ -164,11 +164,11 @@ class Database:
         no-op, so it runs safely on every startup."""
         if self._table_exists(conn, "known_meals"):
             # Old one-line shortcuts become entries in the food library.
-            for r in conn.execute("SELECT name, carbs_g, tags FROM known_meals"):
+            for r in conn.execute("SELECT name, carbs_g FROM known_meals"):
                 conn.execute(
-                    "INSERT OR IGNORE INTO foods (name, description, carbs_g, calories, tags) "
-                    "VALUES (?, '', ?, NULL, ?)",
-                    (r["name"], r["carbs_g"], r["tags"] or ""),
+                    "INSERT OR IGNORE INTO foods (name, description, carbs_g, calories) "
+                    "VALUES (?, '', ?, NULL)",
+                    (r["name"], r["carbs_g"]),
                 )
             conn.execute("DROP TABLE known_meals")
 
@@ -301,20 +301,18 @@ class Database:
                 description=(f.description or None),
                 carbs_g=f.carbs_g,
                 calories=f.calories,
-                tags=(f.tags or None),
             )
             return existing.id
         with self.connect() as conn:
             cur = conn.execute(
-                "INSERT INTO foods (name, description, carbs_g, calories, tags) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (f.name, f.description, f.carbs_g, f.calories, f.tags),
+                "INSERT INTO foods (name, description, carbs_g, calories) VALUES (?, ?, ?, ?)",
+                (f.name, f.description, f.carbs_g, f.calories),
             )
             return cur.lastrowid
 
     def update_food(self, food_id: int, **fields) -> bool:
         return self._update(
-            "foods", food_id, fields, {"name", "description", "carbs_g", "calories", "tags"}
+            "foods", food_id, fields, {"name", "description", "carbs_g", "calories"}
         )
 
     def delete_food(self, food_id: int) -> bool:
@@ -525,7 +523,6 @@ def _food(row: sqlite3.Row) -> Food:
         description=row["description"],
         carbs_g=row["carbs_g"],
         calories=row["calories"],
-        tags=row["tags"],
     )
 
 
