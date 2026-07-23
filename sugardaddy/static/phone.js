@@ -123,6 +123,7 @@
     function highlight() { list.querySelectorAll("li[data-i]").forEach((li, i) => li.classList.toggle("active", i === active)); }
     input.addEventListener("focus", open);
     input.addEventListener("click", open);
+    input.addEventListener("input", open); // re-filter the list as you type
     input.addEventListener("blur", () => setTimeout(close, 120));
     input.addEventListener("keydown", (e) => {
       if (list.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) { open(); return; }
