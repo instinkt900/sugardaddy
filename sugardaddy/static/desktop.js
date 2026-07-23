@@ -2,8 +2,16 @@
 // for insulin, composite meals (plates of foods), the food library, and saved
 // meal templates. Live auto-refresh, paused while anything is mid-edit.
 (function () {
-  const KINDS = (document.getElementById("kinds-data").textContent || "bolus").split(",");
-  const MEAL_TYPES = (document.getElementById("mealtypes-data").textContent || "").split(",").filter(Boolean);
+  // Read a comma-joined list stashed in a <template> element. A <template>'s
+  // text lives in its .content fragment, so el.textContent is empty — use
+  // .content.textContent (falling back to textContent for non-template hosts).
+  function dataList(id) {
+    const el = document.getElementById(id);
+    if (!el) return "";
+    return (el.content ? el.content.textContent : el.textContent) || "";
+  }
+  const KINDS = (dataList("kinds-data") || "bolus").split(",");
+  const MEAL_TYPES = dataList("mealtypes-data").split(",").filter(Boolean);
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
   let chart = null;
   let FOODS = []; // cached food library for item pickers/datalist
