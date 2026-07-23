@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS foods (
     calories    REAL,
     tags        TEXT    NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS idx_foods_name ON foods(name COLLATE NOCASE);
+-- Food names are unique (case-insensitive): re-saving a name updates the
+-- existing food rather than creating a duplicate.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_foods_name ON foods(name COLLATE NOCASE);
 
 -- Logged meals: a header on the timeline...
 CREATE TABLE IF NOT EXISTS meals (
@@ -116,8 +118,43 @@ class Database:
             legacy_meals = self._has_column(conn, "meals", "description")
             if legacy_meals:
                 conn.execute("ALTER TABLE meals RENAME TO _legacy_meals")
+            # Collapse any duplicate food names before the UNIQUE index is created
+            # (older builds allowed duplicates via the "save to library" button).
+            if self._table_exists(conn, "foods"):
+                conn.execute("DROP INDEX IF EXISTS idx_foods_name")
+                self._dedupe_foods(conn)
             conn.executescript(_SCHEMA)
             self._migrate_legacy(conn, legacy_meals)
+
+    def _dedupe_foods(self, conn: sqlite3.Connection) -> None:
+        """Merge case-insensitive duplicate foods into the earliest row: fill any
+        blank fields from the dupes, repoint soft references, then delete them."""
+        rows = conn.execute(
+            "SELECT id, name, description, carbs_g, calories, tags FROM foods ORDER BY id"
+        ).fetchall()
+        keep_by_name: dict[str, int] = {}
+        have_items = self._table_exists(conn, "meal_items")
+        have_tmpl_items = self._table_exists(conn, "meal_template_items")
+        for r in rows:
+            key = r["name"].strip().lower()
+            keep = keep_by_name.get(key)
+            if keep is None:
+                keep_by_name[key] = r["id"]
+                continue
+            conn.execute(
+                "UPDATE foods SET "
+                "description = CASE WHEN COALESCE(description,'')='' THEN ? ELSE description END, "
+                "carbs_g = COALESCE(carbs_g, ?), "
+                "calories = COALESCE(calories, ?), "
+                "tags = CASE WHEN COALESCE(tags,'')='' THEN ? ELSE tags END "
+                "WHERE id = ?",
+                (r["description"] or "", r["carbs_g"], r["calories"], r["tags"] or "", keep),
+            )
+            if have_items:
+                conn.execute("UPDATE meal_items SET food_id=? WHERE food_id=?", (keep, r["id"]))
+            if have_tmpl_items:
+                conn.execute("UPDATE meal_template_items SET food_id=? WHERE food_id=?", (keep, r["id"]))
+            conn.execute("DELETE FROM foods WHERE id=?", (r["id"],))
 
     # --- migration -------------------------------------------------------
 
@@ -129,7 +166,7 @@ class Database:
             # Old one-line shortcuts become entries in the food library.
             for r in conn.execute("SELECT name, carbs_g, tags FROM known_meals"):
                 conn.execute(
-                    "INSERT INTO foods (name, description, carbs_g, calories, tags) "
+                    "INSERT OR IGNORE INTO foods (name, description, carbs_g, calories, tags) "
                     "VALUES (?, '', ?, NULL, ?)",
                     (r["name"], r["carbs_g"], r["tags"] or ""),
                 )
@@ -246,7 +283,27 @@ class Database:
             row = conn.execute("SELECT * FROM foods WHERE id = ?", (food_id,)).fetchone()
         return _food(row) if row else None
 
+    def get_food_by_name(self, name: str) -> Food | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM foods WHERE name = ? COLLATE NOCASE", (name.strip(),)
+            ).fetchone()
+        return _food(row) if row else None
+
     def add_food(self, f: Food) -> int:
+        """Create a food, or if the name already exists (case-insensitive), merge
+        into it: provided values win, blanks keep the existing value. Returns the
+        food's id either way."""
+        existing = self.get_food_by_name(f.name)
+        if existing:
+            self.update_food(
+                existing.id,
+                description=(f.description or None),
+                carbs_g=f.carbs_g,
+                calories=f.calories,
+                tags=(f.tags or None),
+            )
+            return existing.id
         with self.connect() as conn:
             cur = conn.execute(
                 "INSERT INTO foods (name, description, carbs_g, calories, tags) "

@@ -468,14 +468,19 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             calories=_opt_num(body.get("calories")),
             tags=(body.get("tags") or "").strip(),
         )
-        food.id = db.add_food(food)
-        return food_json(food)
+        # add_food upserts by name — return the stored (possibly merged) row.
+        return food_json(db.get_food(db.add_food(food)))
 
     @app.patch("/api/foods/{food_id}")
     async def update_food(food_id: int, request: Request):
         body = await request.json()
         fields = {}
         if "name" in body and body["name"].strip():
+            other = db.get_food_by_name(body["name"])
+            if other and other.id != food_id:
+                return JSONResponse(
+                    {"error": "a food with that name already exists"}, status_code=409
+                )
             fields["name"] = body["name"].strip()
         if "description" in body:
             fields["description"] = (body["description"] or "").strip()

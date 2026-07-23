@@ -405,7 +405,13 @@
   function patch(type, id, body) {
     fetch(`/api/${type}/${id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    }).then(load);
+    }).then(async (r) => {
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        alert(e.error || "Update failed.");
+      }
+      load();
+    });
   }
   function del(type, id) {
     if (!confirm("Delete this entry?")) return;
