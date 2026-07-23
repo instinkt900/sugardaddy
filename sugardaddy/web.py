@@ -26,12 +26,82 @@ from sugardaddy.config import Config, load_config
 from sugardaddy.constants import INSULIN_KINDS, to_display, trend_arrow
 from sugardaddy.db import Database
 from sugardaddy.ingest import start_background
-from sugardaddy.models import InsulinDose, KnownMeal, Meal
+from sugardaddy.models import (
+    Food,
+    InsulinDose,
+    Meal,
+    MealItem,
+    MealTemplate,
+    MealTemplateItem,
+)
 
 log = logging.getLogger("sugardaddy.web")
 
 _HERE = Path(__file__).parent
 _DAY = 24 * 60 * 60
+
+
+def _opt_num(v) -> float | None:
+    """Parse an optional numeric field: blank/None -> None, else float or None."""
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _num(v, default: float) -> float:
+    n = _opt_num(v)
+    return n if n is not None else default
+
+
+def _opt_int(v) -> int | None:
+    if v is None or v == "":
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_meal_items(raw) -> list[MealItem]:
+    """Build MealItem snapshots from a JSON items array (unnamed lines dropped)."""
+    items: list[MealItem] = []
+    for it in raw or []:
+        name = (it.get("name") or "").strip()
+        if not name:
+            continue
+        items.append(
+            MealItem(
+                name=name,
+                count=_num(it.get("count"), 1) or 1,
+                carbs_g=_opt_num(it.get("carbs_g")),
+                calories=_opt_num(it.get("calories")),
+                description=(it.get("description") or "").strip(),
+                tags=(it.get("tags") or "").strip(),
+                food_id=_opt_int(it.get("food_id")),
+            )
+        )
+    return items
+
+
+def _parse_template_items(raw) -> list[MealTemplateItem]:
+    items: list[MealTemplateItem] = []
+    for it in raw or []:
+        name = (it.get("name") or "").strip()
+        if not name:
+            continue
+        items.append(
+            MealTemplateItem(
+                name=name,
+                count=_num(it.get("count"), 1) or 1,
+                carbs_g=_opt_num(it.get("carbs_g")),
+                calories=_opt_num(it.get("calories")),
+                food_id=_opt_int(it.get("food_id")),
+            )
+        )
+    return items
 
 
 def _tz(cfg: Config) -> timezone | ZoneInfo:
@@ -104,6 +174,18 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "note": d.note,
         }
 
+    def meal_item_json(i: MealItem) -> dict:
+        return {
+            "id": i.id,
+            "food_id": i.food_id,
+            "name": i.name,
+            "description": i.description,
+            "carbs_g": i.carbs_g,
+            "calories": i.calories,
+            "count": i.count,
+            "tags": i.tags,
+        }
+
     def meal_json(m: Meal) -> dict:
         return {
             "id": m.id,
@@ -111,14 +193,40 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "ts_utc": m.ts_utc,
             "local": local_str(m.ts_utc),
             "input": local_input(m.ts_utc),
-            "carbs_g": m.carbs_g,
-            "description": m.description,
-            "tags": m.tags,
+            "name": m.name,
             "note": m.note,
+            "label": m.label,
+            "total_carbs": m.total_carbs,
+            "total_calories": m.total_calories,
+            "items": [meal_item_json(i) for i in m.items],
         }
 
-    def known_meal_json(k: KnownMeal) -> dict:
-        return {"id": k.id, "name": k.name, "carbs_g": k.carbs_g, "tags": k.tags}
+    def food_json(f: Food) -> dict:
+        return {
+            "id": f.id,
+            "name": f.name,
+            "description": f.description,
+            "carbs_g": f.carbs_g,
+            "calories": f.calories,
+            "tags": f.tags,
+        }
+
+    def meal_template_json(t: MealTemplate) -> dict:
+        return {
+            "id": t.id,
+            "name": t.name,
+            "items": [
+                {
+                    "id": i.id,
+                    "food_id": i.food_id,
+                    "name": i.name,
+                    "carbs_g": i.carbs_g,
+                    "calories": i.calories,
+                    "count": i.count,
+                }
+                for i in t.items
+            ],
+        }
 
     def recent_context() -> dict:
         start, end = now_epoch() - _DAY, now_epoch()
@@ -256,6 +364,13 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     def _wants_partial(request: Request) -> bool:
         return request.headers.get("HX-Request") == "true"
 
+    async def _form_or_json(request: Request) -> dict:
+        """Accept either a JSON body or an HTML form post (foods can be created
+        from the desktop table via FormData or the phone via JSON)."""
+        if request.headers.get("content-type", "").startswith("application/json"):
+            return await request.json()
+        return dict(await request.form())
+
     @app.post("/api/insulin")
     def create_insulin(
         request: Request,
@@ -272,26 +387,24 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         return dose_json(dose)
 
     @app.post("/api/meal")
-    def create_meal(
-        request: Request,
-        description: str = Form(""),
-        carbs_g: str = Form(""),
-        tags: str = Form(""),
-        ts: str = Form(""),
-        note: str = Form(""),
-    ):
-        carbs = float(carbs_g) if carbs_g.strip() else None
+    async def create_meal(request: Request):
+        """Log a composite meal (plate of snapshot items) from a JSON body:
+        ``{ts, name, note, items:[{food_id,name,carbs_g,calories,count,...}]}``."""
+        body = await request.json()
         meal = Meal(
-            ts_utc=parse_local(ts),
-            carbs_g=carbs,
-            description=description,
-            tags=tags,
-            note=note,
+            ts_utc=parse_local(body.get("ts")),
+            name=(body.get("name") or "").strip(),
+            note=(body.get("note") or "").strip(),
+            items=_parse_meal_items(body.get("items")),
         )
         meal.id = db.add_meal(meal)
-        if _wants_partial(request):
-            return _recent_partial(request)
-        return meal_json(meal)
+        return meal_json(db.get_meal(meal.id))
+
+    @app.get("/api/recent", response_class=HTMLResponse)
+    def api_recent(request: Request):
+        """The recent-entries partial, so the phone can refresh it after a
+        JSON meal POST (insulin still gets the partial from its HTMX post)."""
+        return _recent_partial(request)
 
     def _recent_partial(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
@@ -323,13 +436,12 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         fields = {}
         if "ts" in body:
             fields["ts_utc"] = parse_local(body["ts"])
-        if "carbs_g" in body:
-            c = body["carbs_g"]
-            fields["carbs_g"] = float(c) if c not in ("", None) else None
-        for k in ("description", "tags", "note"):
-            if k in body:
-                fields[k] = body[k]
-        ok = db.update_meal(meal_id, **fields)
+        if "name" in body:
+            fields["name"] = (body["name"] or "").strip()
+        if "note" in body:
+            fields["note"] = (body["note"] or "").strip()
+        items = _parse_meal_items(body["items"]) if "items" in body else None
+        ok = db.update_meal(meal_id, items=items, **fields)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
     @app.delete("/api/meal/{meal_id}")
@@ -337,62 +449,77 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         ok = db.delete_meal(meal_id)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
-    # --- known meals (input shortcuts) ----------------------------------
+    # --- foods (library) ------------------------------------------------
 
-    @app.get("/api/known-meals")
-    def list_known_meals():
-        return [known_meal_json(k) for k in db.list_known_meals()]
+    @app.get("/api/foods")
+    def list_foods():
+        return [food_json(f) for f in db.list_foods()]
 
-    @app.get("/api/meal-suggestions")
-    def meal_suggestions():
-        """Autocomplete source for the meal name field: saved shortcuts first,
-        then recently logged meal names not already covered by a shortcut. Each
-        item carries carbs/tags for prefill; known_id is set only for shortcuts."""
-        out: list[dict] = []
-        seen: set[str] = set()
-        for k in db.list_known_meals():
-            key = k.name.strip().lower()
-            seen.add(key)
-            out.append({"name": k.name, "carbs_g": k.carbs_g, "tags": k.tags, "known_id": k.id})
-        for m in db.recent_meal_names():
-            key = m["name"].strip().lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append({"name": m["name"], "carbs_g": m["carbs_g"], "tags": m["tags"], "known_id": None})
-        return out
-
-    @app.post("/api/known-meals")
-    def create_known_meal(
-        name: str = Form(...),
-        carbs_g: str = Form(""),
-        tags: str = Form(""),
-    ):
-        name = name.strip()
+    @app.post("/api/foods")
+    async def create_food(request: Request):
+        body = await _form_or_json(request)
+        name = (body.get("name") or "").strip()
         if not name:
             return JSONResponse({"error": "name required"}, status_code=400)
-        carbs = float(carbs_g) if carbs_g.strip() else None
-        km = KnownMeal(name=name, carbs_g=carbs, tags=tags.strip())
-        km.id = db.add_known_meal(km)
-        return known_meal_json(km)
+        food = Food(
+            name=name,
+            description=(body.get("description") or "").strip(),
+            carbs_g=_opt_num(body.get("carbs_g")),
+            calories=_opt_num(body.get("calories")),
+            tags=(body.get("tags") or "").strip(),
+        )
+        food.id = db.add_food(food)
+        return food_json(food)
 
-    @app.patch("/api/known-meals/{known_id}")
-    async def update_known_meal(known_id: int, request: Request):
+    @app.patch("/api/foods/{food_id}")
+    async def update_food(food_id: int, request: Request):
         body = await request.json()
         fields = {}
         if "name" in body and body["name"].strip():
             fields["name"] = body["name"].strip()
+        if "description" in body:
+            fields["description"] = (body["description"] or "").strip()
         if "carbs_g" in body:
-            c = body["carbs_g"]
-            fields["carbs_g"] = float(c) if c not in ("", None) else None
+            fields["carbs_g"] = _opt_num(body["carbs_g"])
+        if "calories" in body:
+            fields["calories"] = _opt_num(body["calories"])
         if "tags" in body:
-            fields["tags"] = body["tags"].strip()
-        ok = db.update_known_meal(known_id, **fields)
+            fields["tags"] = (body["tags"] or "").strip()
+        ok = db.update_food(food_id, **fields)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
-    @app.delete("/api/known-meals/{known_id}")
-    def delete_known_meal(known_id: int):
-        ok = db.delete_known_meal(known_id)
+    @app.delete("/api/foods/{food_id}")
+    def delete_food(food_id: int):
+        ok = db.delete_food(food_id)
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    # --- meal templates (saved meals) -----------------------------------
+
+    @app.get("/api/meal-templates")
+    def list_meal_templates():
+        return [meal_template_json(t) for t in db.list_meal_templates()]
+
+    @app.post("/api/meal-templates")
+    async def create_meal_template(request: Request):
+        body = await request.json()
+        name = (body.get("name") or "").strip()
+        if not name:
+            return JSONResponse({"error": "name required"}, status_code=400)
+        t = MealTemplate(name=name, items=_parse_template_items(body.get("items")))
+        t.id = db.add_meal_template(t)
+        return {"id": t.id, "name": t.name}
+
+    @app.patch("/api/meal-templates/{template_id}")
+    async def update_meal_template(template_id: int, request: Request):
+        body = await request.json()
+        name = body.get("name") if "name" in body else None
+        items = _parse_template_items(body["items"]) if "items" in body else None
+        ok = db.update_meal_template(template_id, name=name, items=items)
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    @app.delete("/api/meal-templates/{template_id}")
+    def delete_meal_template(template_id: int):
+        ok = db.delete_meal_template(template_id)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
     # --- lifecycle -------------------------------------------------------

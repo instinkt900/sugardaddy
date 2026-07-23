@@ -1,4 +1,5 @@
-// Phone UI: tab switching + a compact 24h glucose chart.
+// Phone UI: tab switching, a compact 24h glucose chart with live refresh, and
+// the meal "plate builder" (foods + counts, saved-meal templates).
 (function () {
   // --- tabs ---
   const tabs = document.querySelectorAll(".tab");
@@ -12,20 +13,30 @@
     });
   });
 
-  // --- live refresh ---
-  // The current reading and mini chart refresh on a timer and whenever the tab
-  // regains focus, so leaving the app open (or returning to it) shows fresh
-  // glucose without a manual reload. Roughly matches the ~1/min sensor cadence.
+  function esc(s) {
+    return (s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+  function numOrNull(v) {
+    if (v == null || String(v).trim() === "") return null;
+    const n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+  function nowInput() {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  // ================= live refresh (current reading + mini chart) =============
   const REFRESH_MS = 60000;
 
-  // --- current reading (big number + trend + status colour) ---
   function statusClass(c) {
     if (!c.has_reading) return "";
     if (c.is_low) return "is-low";
     if (c.is_high) return "is-high";
     return "in-range";
   }
-
   function renderCurrent(c) {
     const el = document.getElementById("current");
     if (!el) return;
@@ -40,12 +51,10 @@
         `<div class="current-meta">no glucose reading yet</div>`;
     }
   }
-
   function updateCurrent() {
     return fetch("/api/current").then((r) => r.json()).then(renderCurrent).catch(() => {});
   }
 
-  // --- mini chart (reuse one instance; update data on refresh) ---
   let miniChart = null;
   function draw() {
     const ctx = document.getElementById("mini-chart");
@@ -84,154 +93,251 @@
 
   function refresh() { updateCurrent(); draw(); }
 
-  // --- meal suggestions: custom combobox (saved shortcuts + recent meals) ---
-  // A native <datalist> proved unreliable on mobile (won't open, autocomplete
-  // quirks), so this is a self-contained dropdown we fully control.
-  let suggestions = [];
-  let activeIdx = -1;
-  let filteredNow = [];
-  const nameEl = document.getElementById("meal-name");
-  const carbsEl = document.getElementById("meal-carbs");
-  const tagsEl = document.getElementById("meal-tags");
-  const idEl = document.getElementById("known-id");
-  const updateBtn = document.getElementById("km-update");
-  const saveNewBtn = document.getElementById("km-savenew");
-  const listEl = document.getElementById("meal-suggest");
-  const statusEl = document.getElementById("km-status");
-  const mealForm = document.getElementById("meal-form");
-
-  function loadSuggestions() {
-    return fetch("/api/meal-suggestions")
-      .then((r) => r.json())
-      .then((data) => { suggestions = data; syncSelection(); })
-      .catch(() => {});
-  }
-
-  function carbLabel(s) { return s.carbs_g != null ? `${s.carbs_g}g` : ""; }
-  function esc(s) {
-    return (s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  }
-
-  function matchByName(name) {
-    const n = (name || "").trim().toLowerCase();
-    return suggestions.find((s) => s.name.trim().toLowerCase() === n) || null;
-  }
-
-  // Reflect an exact-name match in the hidden id + Update button (no prefill).
-  function syncSelection() {
-    const m = matchByName(nameEl.value);
-    idEl.value = m && m.known_id ? m.known_id : "";
-    updateBtn.disabled = !(m && m.known_id);
-  }
-
-  function currentFilter() {
-    const q = nameEl.value.trim().toLowerCase();
-    return q ? suggestions.filter((s) => s.name.toLowerCase().includes(q)) : suggestions;
-  }
-
-  function openList() {
-    filteredNow = currentFilter();
-    activeIdx = -1;
-    if (!suggestions.length) return; // nothing saved/logged yet
-    if (!filteredNow.length) {
-      listEl.innerHTML = `<li class="empty" aria-disabled="true">No matching meals</li>`;
-    } else {
-      listEl.innerHTML = filteredNow
-        .map((s, i) => `<li role="option" data-i="${i}"><span>${esc(s.name)}</span><span class="s-carb">${carbLabel(s)}</span></li>`)
-        .join("");
-      listEl.querySelectorAll("li[data-i]").forEach((li) => {
-        // pointerdown + preventDefault keeps the input focused through the tap.
-        li.addEventListener("pointerdown", (e) => { e.preventDefault(); pick(filteredNow[+li.dataset.i]); });
-      });
+  // ================= combobox factory ========================================
+  // A self-contained dropdown (native <datalist> is unreliable on mobile).
+  // getItems() returns the current array of {name, ...}; rightLabel(item)
+  // gives the secondary text; onPick(item) fires on selection.
+  function makeCombo(input, list, getItems, onPick, rightLabel) {
+    let filtered = [], active = -1;
+    function currentFilter() {
+      const q = input.value.trim().toLowerCase();
+      const items = getItems();
+      return q ? items.filter((s) => s.name.toLowerCase().includes(q)) : items;
     }
-    listEl.hidden = false;
-    nameEl.setAttribute("aria-expanded", "true");
+    function open() {
+      filtered = currentFilter(); active = -1;
+      if (!getItems().length) { list.hidden = true; return; }
+      if (!filtered.length) {
+        list.innerHTML = `<li class="empty" aria-disabled="true">No matches</li>`;
+      } else {
+        list.innerHTML = filtered
+          .map((s, i) => `<li role="option" data-i="${i}"><span>${esc(s.name)}</span><span class="s-carb">${esc(rightLabel(s))}</span></li>`)
+          .join("");
+        list.querySelectorAll("li[data-i]").forEach((li) => {
+          li.addEventListener("pointerdown", (e) => { e.preventDefault(); onPick(filtered[+li.dataset.i]); close(); });
+        });
+      }
+      list.hidden = false; input.setAttribute("aria-expanded", "true");
+    }
+    function close() { list.hidden = true; active = -1; input.setAttribute("aria-expanded", "false"); }
+    function highlight() { list.querySelectorAll("li[data-i]").forEach((li, i) => li.classList.toggle("active", i === active)); }
+    input.addEventListener("focus", open);
+    input.addEventListener("click", open);
+    input.addEventListener("blur", () => setTimeout(close, 120));
+    input.addEventListener("keydown", (e) => {
+      if (list.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) { open(); return; }
+      const n = list.querySelectorAll("li[data-i]").length;
+      if (e.key === "ArrowDown") { e.preventDefault(); active = Math.min(active + 1, n - 1); highlight(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); active = Math.max(active - 1, 0); highlight(); }
+      else if (e.key === "Enter") { if (!list.hidden && active >= 0) { e.preventDefault(); onPick(filtered[active]); close(); } }
+      else if (e.key === "Escape") { close(); }
+    });
+    return { open, close };
   }
 
-  function closeList() {
-    listEl.hidden = true;
-    activeIdx = -1;
-    nameEl.setAttribute("aria-expanded", "false");
-  }
-
-  function highlight() {
-    listEl.querySelectorAll("li[data-i]").forEach((li, i) => li.classList.toggle("active", i === activeIdx));
-  }
-
-  function pick(s) {
-    if (!s) return;
-    nameEl.value = s.name;
-    carbsEl.value = s.carbs_g != null ? s.carbs_g : "";
-    tagsEl.value = s.tags || "";
-    idEl.value = s.known_id || "";
-    updateBtn.disabled = !s.known_id;
-    closeList();
-  }
-
-  function flash(msg) {
-    if (!statusEl) return;
-    statusEl.textContent = msg;
-    setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ""; }, 2500);
-  }
-
-  function currentFields() {
-    const fd = new FormData();
-    fd.append("name", nameEl.value.trim());
-    fd.append("carbs_g", carbsEl.value);
-    fd.append("tags", tagsEl.value);
-    return fd;
-  }
-
+  // ================= meal plate builder ======================================
+  const nameEl = document.getElementById("meal-name");
   if (nameEl) {
-    nameEl.addEventListener("focus", openList);
-    nameEl.addEventListener("click", openList);
-    nameEl.addEventListener("input", () => { syncSelection(); openList(); });
-    nameEl.addEventListener("blur", () => setTimeout(closeList, 120));
+    const tmplList = document.getElementById("tmpl-suggest");
+    const tmplUpdateBtn = document.getElementById("tmpl-update");
+    const tmplSaveNewBtn = document.getElementById("tmpl-savenew");
+    const plateEl = document.getElementById("plate-list");
+    const plateEmpty = document.getElementById("plate-empty");
+    const totalsEl = document.getElementById("plate-totals");
+    const foodEl = document.getElementById("food-name");
+    const foodList = document.getElementById("food-suggest");
+    const carbsEl = document.getElementById("food-carbs");
+    const calEl = document.getElementById("food-cal");
+    const countEl = document.getElementById("food-count");
+    const addBtn = document.getElementById("add-to-plate");
+    const libBtn = document.getElementById("save-to-library");
+    const tsEl = document.getElementById("meal-ts");
+    const noteEl = document.getElementById("meal-note");
+    const logBtn = document.getElementById("log-meal");
+    const statusEl = document.getElementById("meal-status");
 
-    nameEl.addEventListener("keydown", (e) => {
-      if (listEl.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) { openList(); return; }
-      const n = listEl.querySelectorAll("li[data-i]").length;
-      if (e.key === "ArrowDown") { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, n - 1); highlight(); }
-      else if (e.key === "ArrowUp") { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); highlight(); }
-      else if (e.key === "Enter") {
-        if (!listEl.hidden && activeIdx >= 0) { e.preventDefault(); pick(filteredNow[activeIdx]); }
-      } else if (e.key === "Escape") { closeList(); }
+    let foods = [];
+    let templates = [];
+    let plate = [];           // [{food_id, name, carbs_g, calories, count}]
+    let loadedTemplateId = null;
+    let pickedFoodId = null;  // set when a library food is chosen; cleared on manual edit
+
+    function status(msg) {
+      statusEl.textContent = msg;
+      setTimeout(() => { if (statusEl.textContent === msg) statusEl.textContent = ""; }, 2500);
+    }
+
+    function loadFoods() {
+      return fetch("/api/foods").then((r) => r.json()).then((d) => { foods = d; }).catch(() => {});
+    }
+    function loadTemplates() {
+      return fetch("/api/meal-templates").then((r) => r.json()).then((d) => { templates = d; }).catch(() => {});
+    }
+
+    function fmtMacros(carbs, cal) {
+      const bits = [];
+      if (carbs != null) bits.push(`${carbs}g`);
+      if (cal != null) bits.push(`${cal}cal`);
+      return bits.join(" · ");
+    }
+
+    function renderPlate() {
+      plateEl.innerHTML = "";
+      plate.forEach((it, i) => {
+        const li = document.createElement("li");
+        li.innerHTML =
+          `<span class="pi-name">${esc(it.name)}</span>` +
+          `<span class="pi-macros">${esc(fmtMacros(it.carbs_g, it.calories))}</span>` +
+          `<input class="pi-count" type="number" min="0" step="0.5" inputmode="decimal" value="${it.count}">` +
+          `<button type="button" class="pi-del" title="Remove">✕</button>`;
+        li.querySelector(".pi-count").addEventListener("change", (e) => {
+          it.count = parseFloat(e.target.value) || 0;
+          renderTotals();
+        });
+        li.querySelector(".pi-del").addEventListener("click", () => { plate.splice(i, 1); renderPlate(); });
+        plateEl.appendChild(li);
+      });
+      plateEmpty.classList.toggle("hidden", plate.length > 0);
+      renderTotals();
+    }
+
+    function renderTotals() {
+      let c = 0, cal = 0, hasC = false, hasCal = false;
+      plate.forEach((it) => {
+        if (it.carbs_g != null) { c += it.carbs_g * it.count; hasC = true; }
+        if (it.calories != null) { cal += it.calories * it.count; hasCal = true; }
+      });
+      const bits = [];
+      if (hasC) bits.push(`${Math.round(c * 10) / 10} g carbs`);
+      if (hasCal) bits.push(`${Math.round(cal)} cal`);
+      totalsEl.textContent = plate.length ? bits.join(" · ") : "";
+    }
+
+    function addToPlate() {
+      const name = foodEl.value.trim();
+      if (!name) { status("Enter a food name."); return; }
+      plate.push({
+        food_id: pickedFoodId,
+        name,
+        carbs_g: numOrNull(carbsEl.value),
+        calories: numOrNull(calEl.value),
+        count: parseFloat(countEl.value) || 1,
+      });
+      foodEl.value = ""; carbsEl.value = ""; calEl.value = ""; countEl.value = "1";
+      pickedFoodId = null;
+      renderPlate();
+      foodEl.focus();
+    }
+
+    function resetBuilder() {
+      plate = []; loadedTemplateId = null;
+      tmplUpdateBtn.disabled = true;
+      nameEl.value = ""; noteEl.value = "";
+      tsEl.value = nowInput();
+      renderPlate();
+    }
+
+    function templateItemsPayload() {
+      return plate.map((it) => ({
+        food_id: it.food_id, name: it.name, carbs_g: it.carbs_g, calories: it.calories, count: it.count,
+      }));
+    }
+
+    function refreshRecent() {
+      fetch("/api/recent").then((r) => r.text()).then((html) => {
+        const el = document.getElementById("recent");
+        if (el) el.outerHTML = html;
+      }).catch(() => {});
+    }
+
+    // -- food combobox: pick prefills macros; typing marks the item ad-hoc --
+    makeCombo(
+      foodEl, foodList, () => foods,
+      (f) => {
+        foodEl.value = f.name;
+        carbsEl.value = f.carbs_g != null ? f.carbs_g : "";
+        calEl.value = f.calories != null ? f.calories : "";
+        pickedFoodId = f.id;
+      },
+      (f) => fmtMacros(f.carbs_g, f.calories),
+    );
+    foodEl.addEventListener("input", () => { pickedFoodId = null; });
+
+    // -- saved-meal (template) combobox: load its plate --
+    makeCombo(
+      nameEl, tmplList, () => templates,
+      (t) => {
+        nameEl.value = t.name;
+        loadedTemplateId = t.id;
+        tmplUpdateBtn.disabled = false;
+        plate = (t.items || []).map((i) => ({
+          food_id: i.food_id, name: i.name, carbs_g: i.carbs_g, calories: i.calories, count: i.count,
+        }));
+        renderPlate();
+      },
+      (t) => `${(t.items || []).length} item${(t.items || []).length === 1 ? "" : "s"}`,
+    );
+
+    addBtn.addEventListener("click", addToPlate);
+
+    libBtn.addEventListener("click", () => {
+      const name = foodEl.value.trim();
+      if (!name) { status("Enter a food name first."); return; }
+      fetch("/api/foods", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, carbs_g: carbsEl.value, calories: calEl.value }),
+      })
+        .then((r) => r.json())
+        .then((f) => { pickedFoodId = f.id; return loadFoods(); })
+        .then(() => status(`Saved "${name}" to the library.`));
     });
 
-    updateBtn.addEventListener("click", () => {
-      const id = idEl.value;
-      if (!id) return;
-      fetch(`/api/known-meals/${id}`, {
+    tmplSaveNewBtn.addEventListener("click", () => {
+      const name = nameEl.value.trim();
+      if (!name) { status("Enter a meal name first."); return; }
+      if (!plate.length) { status("Add at least one food."); return; }
+      fetch("/api/meal-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, items: templateItemsPayload() }),
+      })
+        .then((r) => r.json())
+        .then((t) => { loadedTemplateId = t.id; tmplUpdateBtn.disabled = false; return loadTemplates(); })
+        .then(() => status("Saved as a new meal."));
+    });
+
+    tmplUpdateBtn.addEventListener("click", () => {
+      if (!loadedTemplateId) return;
+      fetch(`/api/meal-templates/${loadedTemplateId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: nameEl.value.trim(), carbs_g: carbsEl.value, tags: tagsEl.value }),
-      }).then(() => loadSuggestions()).then(() => flash("Saved meal updated."));
+        body: JSON.stringify({ name: nameEl.value.trim(), items: templateItemsPayload() }),
+      }).then(() => loadTemplates()).then(() => status("Saved meal updated."));
     });
 
-    saveNewBtn.addEventListener("click", () => {
-      if (!nameEl.value.trim()) { flash("Enter a name first."); return; }
-      fetch("/api/known-meals", { method: "POST", body: currentFields() })
+    logBtn.addEventListener("click", () => {
+      if (!plate.length) { status("Add at least one food."); return; }
+      fetch("/api/meal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ts: tsEl.value, name: nameEl.value.trim(), note: noteEl.value.trim(),
+          items: plate,
+        }),
+      })
         .then((r) => r.json())
-        .then(() => loadSuggestions())
-        .then(() => flash("Saved as a new meal."));
+        .then(() => { resetBuilder(); refreshRecent(); status("Meal logged."); })
+        .catch(() => status("Could not log meal."));
     });
 
-    // Reset combo state after a successful log, and refresh suggestions so the
-    // just-logged meal becomes available for next time.
-    mealForm.addEventListener("reset", () => {
-      idEl.value = "";
-      updateBtn.disabled = true;
-      if (statusEl) statusEl.textContent = "";
-      closeList();
-      loadSuggestions();
-    });
-
-    loadSuggestions();
+    loadFoods();
+    loadTemplates();
+    renderPlate();
   }
 
+  // ================= init ====================================================
   window.addEventListener("load", refresh);
-  // Timed refresh (skip while the tab is hidden to save battery/network) plus an
-  // immediate refresh when the user returns to the app.
   setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 })();

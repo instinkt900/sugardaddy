@@ -50,7 +50,7 @@
         <button class="add-btn" data-add="meal">+ Add</button>
       </div>
       <table class="data-table" id="meal-table">
-        <thead><tr><th>Time</th><th>Description</th><th>Carbs</th><th>Tags</th><th>Note</th><th></th></tr></thead>
+        <thead><tr><th>Time</th><th>Meal</th><th>Carbs</th><th>Cal</th><th>Note</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
     </section>
@@ -58,13 +58,21 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2>Known meals <span class="muted" style="font-weight:400;font-size:13px">— input shortcuts, not linked to history</span></h2>
-      <button class="add-btn" data-add="known">+ Add</button>
+      <h2>Foods <span class="muted" style="font-weight:400;font-size:13px">— library used to build meals; edits never change history</span></h2>
+      <button class="add-btn" data-add="food">+ Add</button>
     </div>
-    <table class="data-table" id="known-table">
-      <thead><tr><th>Name</th><th>Carbs</th><th>Tags</th><th></th></tr></thead>
+    <table class="data-table" id="foods-table">
+      <thead><tr><th>Name</th><th>Description</th><th>Carbs</th><th>Cal</th><th>Tags</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Saved meals <span class="muted" style="font-weight:400;font-size:13px">— reusable plates for fast logging; live-linked to foods</span></h2>
+      <button class="add-btn" id="add-template">+ Add</button>
+    </div>
+    <div id="templates-list" class="templates-list"></div>
   </section>
 
   <section class="panel">
@@ -79,6 +87,7 @@
 </div>
 
 <template id="kinds-data">{{ kinds|join(',') }}</template>
+<datalist id="foods-datalist"></datalist>
 {% endblock %}
 
 {% block scripts %}

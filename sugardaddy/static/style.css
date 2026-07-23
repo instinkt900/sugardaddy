@@ -120,6 +120,30 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 .combo-btn:disabled { opacity: .4; border-color: var(--border); color: var(--muted); cursor: default; }
 .km-status { margin: 0; font-size: 13px; min-height: 1em; }
 
+/* --- meal plate builder (phone) --- */
+.plate-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.plate-list li {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 10px;
+}
+.plate-list .pi-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plate-list .pi-macros { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.plate-list .pi-count { width: 58px; padding: 6px; text-align: center; font-size: 15px; }
+.plate-list .pi-del { background: transparent; border: 1px solid var(--low); color: var(--low); border-radius: 6px; padding: 6px 9px; }
+.plate-empty { margin: 6px 0; font-size: 14px; }
+.plate-totals { text-align: right; font-size: 13px; min-height: 1em; }
+
+.additem {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--card); border: 1px dashed var(--border);
+  border-radius: 10px; padding: 10px;
+}
+.additem-nums { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.additem-nums label { flex: 1; min-width: 74px; }
+.additem-nums input { width: 100%; }
+.add-plate-btn { flex: 0 0 auto; min-height: 46px; padding: 0 18px; }
+
 .big-btn {
   margin-top: 4px;
   padding: 16px;
@@ -186,6 +210,22 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 .icon-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 4px 8px; }
 .icon-btn.danger { color: var(--low); border-color: var(--low); }
 .icon-btn.save { color: var(--in); border-color: var(--in); }
+
+/* --- composite meal / template editors (desktop) --- */
+.meal-editor, .tmpl-editor { display: flex; flex-direction: column; gap: 10px; padding: 6px 2px; }
+.me-head { display: flex; gap: 14px; flex-wrap: wrap; }
+.me-head label, .tmpl-editor .t-namewrap { flex-direction: row; align-items: center; gap: 6px; color: var(--muted); }
+.me-items { margin: 0; }
+.me-items th { font-size: 11px; }
+.me-items td { padding: 4px 8px; }
+.me-items input { width: 100%; }
+.me-actions { display: flex; align-items: center; gap: 8px; }
+
+.templates-list { display: flex; flex-direction: column; gap: 8px; }
+.tmpl { background: var(--card-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.tmpl-head { display: flex; align-items: center; gap: 12px; }
+.tmpl-name { font-weight: 600; }
+.tmpl-summary { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 860px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }

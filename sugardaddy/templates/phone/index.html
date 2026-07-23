@@ -45,35 +45,51 @@
   </section>
 
   <section id="tab-meal" class="logform hidden">
-    <form id="meal-form" hx-post="/api/meal" hx-target="#recent" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) this.reset()">
+    <div id="meal-builder">
       <label>Meal
         <div class="combo">
           <div class="combo-field">
-            <input type="text" name="description" id="meal-name" autocomplete="off"
-                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="meal-suggest"
-                   placeholder="type or pick a recent/saved meal">
-            <ul id="meal-suggest" class="combo-list" role="listbox" hidden></ul>
+            <input type="text" id="meal-name" autocomplete="off"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tmpl-suggest"
+                   placeholder="name, or pick a saved meal">
+            <ul id="tmpl-suggest" class="combo-list" role="listbox" hidden></ul>
           </div>
-          <button type="button" id="km-update" class="combo-btn" disabled title="Update saved meal">Update</button>
-          <button type="button" id="km-savenew" class="combo-btn" title="Save as a new meal">Save as new</button>
+          <button type="button" id="tmpl-update" class="combo-btn" disabled title="Update the saved meal">Update</button>
+          <button type="button" id="tmpl-savenew" class="combo-btn" title="Save this plate as a new meal">Save as new</button>
         </div>
       </label>
-      <input type="hidden" id="known-id" value="">
-      <label>Carbs (g)
-        <input type="number" name="carbs_g" id="meal-carbs" step="1" min="0" inputmode="decimal" placeholder="optional">
-      </label>
-      <label>Tags
-        <input type="text" name="tags" id="meal-tags" placeholder="optional, comma-separated">
-      </label>
+
+      <ul id="plate-list" class="plate-list"></ul>
+      <p id="plate-empty" class="muted plate-empty">No items yet — add foods below.</p>
+      <div id="plate-totals" class="plate-totals muted"></div>
+
+      <div class="additem">
+        <div class="combo">
+          <div class="combo-field">
+            <input type="text" id="food-name" autocomplete="off"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="food-suggest"
+                   placeholder="add a food (pick or type)">
+            <ul id="food-suggest" class="combo-list" role="listbox" hidden></ul>
+          </div>
+          <button type="button" id="save-to-library" class="combo-btn" title="Save this food to the library">＋ Lib</button>
+        </div>
+        <div class="additem-nums">
+          <label>Carbs (g)<input type="number" id="food-carbs" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
+          <label>Calories<input type="number" id="food-cal" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
+          <label>Count<input type="number" id="food-count" step="0.5" min="0" value="1" inputmode="decimal"></label>
+          <button type="button" id="add-to-plate" class="combo-btn add-plate-btn">Add</button>
+        </div>
+      </div>
+
       <label>Time
-        <input type="datetime-local" name="ts" value="{{ now_input }}">
+        <input type="datetime-local" id="meal-ts" value="{{ now_input }}">
       </label>
       <label>Note
-        <input type="text" name="note" placeholder="optional (not saved to the shortcut)">
+        <input type="text" id="meal-note" placeholder="optional">
       </label>
-      <button type="submit" class="big-btn">Log meal</button>
-      <p id="km-status" class="km-status muted"></p>
-    </form>
+      <button type="button" id="log-meal" class="big-btn">Log meal</button>
+      <p id="meal-status" class="km-status muted"></p>
+    </div>
   </section>
 
   {% include "partials/recent.html" %}

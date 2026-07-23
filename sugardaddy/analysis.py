@@ -88,8 +88,8 @@ def post_meal_responses(
             {
                 "meal_id": meal.id,
                 "ts_utc": meal.ts_utc,
-                "description": meal.description,
-                "carbs_g": meal.carbs_g,
+                "description": meal.label,
+                "carbs_g": meal.total_carbs,
                 "start_display": to_display(start.value_mgdl, units),
                 "peak_display": to_display(peak.value_mgdl, units),
                 "peak_delta_display": _delta_display(peak.value_mgdl - start.value_mgdl, units),

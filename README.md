@@ -18,16 +18,22 @@ Everything runs on your own infrastructure.
 - **Ingests glucose** from LibreLinkUp on an interval and stores every reading
   (deduplicated) in a local SQLite database.
 - **Two web UIs, one backend:**
-  - **Phone** (`/`) — input-first: current reading + trend, a compact 24h chart,
-    and fast one-tap logging of insulin and meals. The meal name field is a
-    searchable dropdown of your recent + saved meals that prefills carbs and tags.
+  - **Phone** (`/`) — input-first: current reading + trend (auto-refreshing), a
+    compact 24h chart, fast insulin logging, and a **meal plate builder** — add
+    foods (from the library or typed ad-hoc) with a count, then log the whole
+    plate. Load a **saved meal** to prefill the plate in one tap.
   - **Desktop** (`/desktop`) — review-first: a large interactive chart (glucose
     line + target band + dose/meal markers) with date-range selection, sortable
-    tables with inline **add / edit / delete**, and analysis panels.
-- **Known meals** — a library of reusable meal shortcuts (name + carbs + tags)
-  for fast logging. Fully decoupled from history: logging copies the values into
-  a snapshot, so editing or deleting a shortcut never changes entries you've
-  already logged. Manage them on the desktop; use them from the phone.
+    tables with inline **add / edit / delete**, and analysis panels. Manages the
+    food library and saved meals.
+- **Composite meals** — a meal is a plate of **foods**, each with a count (e.g.
+  1 sandwich + 1 juice + 2 biscuits). Carbs and calories total automatically.
+- **Food library** — reusable foods (name, description, carbs, calories, tags)
+  with full add/edit/delete, shared across every device.
+- **Saved meals** — named plates for fast logging, with **Update / Save as new**.
+  They are **live-linked** to the food library, so correcting a food updates
+  every saved meal that uses it — but **history is a snapshot**: editing or
+  deleting a food or saved meal never changes meals you've already logged.
 - **Analyses** the timeline: time-in-range, average glucose + estimated GMI,
   high/low counts, and the 2-hour glucose response after each logged meal.
 - **Seeds history** once from an existing Home Assistant install (optional), so
@@ -74,7 +80,7 @@ sugardaddy/
   cli.py         entrypoint: serve | ingest | backfill | init-db
   config.py      one TOML → typed config (secrets from env, never in TOML)
   constants.py   unit conversion, trend arrows, default target range
-  models.py      typed rows (readings, doses, meals, known meals)
+  models.py      typed rows (readings, doses, foods, meals + items, templates)
   db.py          SQLite schema + queries (UTC epoch, dedup on ts)
   source.py      GlucoseSource ABC + LibreLinkUpSource (pylibrelinkup)
   ingest.py      background poll loop (auth → latest()/graph() → store)
