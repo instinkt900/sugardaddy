@@ -390,13 +390,17 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         """Log a composite meal (plate of snapshot items) from a JSON body:
         ``{ts, name, note, items:[{food_id,name,carbs_g,calories,count,...}]}``."""
         body = await request.json()
+        name = (body.get("name") or "").strip()
         meal = Meal(
             ts_utc=parse_local(body.get("ts")),
-            name=(body.get("name") or "").strip(),
+            name=name,
             note=(body.get("note") or "").strip(),
             items=_parse_meal_items(body.get("items")),
         )
         meal.id = db.add_meal(meal)
+        # A named meal is also saved to the library — created, or updated by name.
+        if name:
+            db.upsert_meal_template(name, _parse_template_items(body.get("items")))
         return meal_json(db.get_meal(meal.id))
 
     @app.get("/api/recent", response_class=HTMLResponse)
@@ -506,14 +510,20 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         name = (body.get("name") or "").strip()
         if not name:
             return JSONResponse({"error": "name required"}, status_code=400)
-        t = MealTemplate(name=name, items=_parse_template_items(body.get("items")))
-        t.id = db.add_meal_template(t)
-        return {"id": t.id, "name": t.name}
+        # Upsert by name so re-saving a name updates the existing saved meal.
+        tid = db.upsert_meal_template(name, _parse_template_items(body.get("items")))
+        return {"id": tid, "name": name}
 
     @app.patch("/api/meal-templates/{template_id}")
     async def update_meal_template(template_id: int, request: Request):
         body = await request.json()
         name = body.get("name") if "name" in body else None
+        if name is not None and name.strip():
+            other = db.get_meal_template_id_by_name(name)
+            if other and other != template_id:
+                return JSONResponse(
+                    {"error": "a saved meal with that name already exists"}, status_code=409
+                )
         items = _parse_template_items(body["items"]) if "items" in body else None
         ok = db.update_meal_template(template_id, name=name, items=items)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)

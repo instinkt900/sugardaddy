@@ -83,6 +83,9 @@ CREATE TABLE IF NOT EXISTS meal_templates (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
 );
+-- Saved-meal names are unique (case-insensitive): logging a named meal creates
+-- or updates the matching saved meal.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meal_templates_name ON meal_templates(name COLLATE NOCASE);
 CREATE TABLE IF NOT EXISTS meal_template_items (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     template_id INTEGER NOT NULL REFERENCES meal_templates(id) ON DELETE CASCADE,
@@ -124,6 +127,9 @@ class Database:
                 self._dedupe_foods(conn)
                 if self._has_column(conn, "foods", "tags"):
                     conn.execute("ALTER TABLE foods DROP COLUMN tags")
+            # Collapse duplicate saved-meal names before the UNIQUE index exists.
+            if self._table_exists(conn, "meal_templates"):
+                self._dedupe_meal_templates(conn)
             conn.executescript(_SCHEMA)
             self._migrate_legacy(conn, legacy_meals)
 
@@ -155,6 +161,17 @@ class Database:
             if have_tmpl_items:
                 conn.execute("UPDATE meal_template_items SET food_id=? WHERE food_id=?", (keep, r["id"]))
             conn.execute("DELETE FROM foods WHERE id=?", (r["id"],))
+
+    def _dedupe_meal_templates(self, conn: sqlite3.Connection) -> None:
+        """Keep the earliest saved meal per (case-insensitive) name, delete the
+        rest — their items cascade away via the FK."""
+        seen: set[str] = set()
+        for r in conn.execute("SELECT id, name FROM meal_templates ORDER BY id"):
+            key = r["name"].strip().lower()
+            if key in seen:
+                conn.execute("DELETE FROM meal_templates WHERE id=?", (r["id"],))
+            else:
+                seen.add(key)
 
     # --- migration -------------------------------------------------------
 
@@ -435,6 +452,30 @@ class Database:
                         )
                     )
         return templates
+
+    def get_meal_template_id_by_name(self, name: str) -> int | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM meal_templates WHERE name = ? COLLATE NOCASE", (name.strip(),)
+            ).fetchone()
+        return row["id"] if row else None
+
+    def upsert_meal_template(self, name: str, items: list[MealTemplateItem]) -> int:
+        """Create a saved meal, or if the name already exists (case-insensitive),
+        replace its items. Returns the template id."""
+        name = name.strip()
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM meal_templates WHERE name = ? COLLATE NOCASE", (name,)
+            ).fetchone()
+            if row:
+                template_id = row["id"]
+                conn.execute("DELETE FROM meal_template_items WHERE template_id = ?", (template_id,))
+            else:
+                cur = conn.execute("INSERT INTO meal_templates (name) VALUES (?)", (name,))
+                template_id = cur.lastrowid
+            self._insert_template_items(conn, template_id, items)
+            return template_id
 
     def add_meal_template(self, t: MealTemplate) -> int:
         with self.connect() as conn:

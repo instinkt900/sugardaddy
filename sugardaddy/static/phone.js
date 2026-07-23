@@ -140,8 +140,6 @@
   const nameEl = document.getElementById("meal-name");
   if (nameEl) {
     const tmplList = document.getElementById("tmpl-suggest");
-    const tmplUpdateBtn = document.getElementById("tmpl-update");
-    const tmplSaveNewBtn = document.getElementById("tmpl-savenew");
     const plateEl = document.getElementById("plate-list");
     const plateEmpty = document.getElementById("plate-empty");
     const totalsEl = document.getElementById("plate-totals");
@@ -160,7 +158,6 @@
     let foods = [];
     let templates = [];
     let plate = [];           // [{food_id, name, carbs_g, calories, count}]
-    let loadedTemplateId = null;
     let pickedFoodId = null;  // set when a library food is chosen; cleared on manual edit
 
     function status(msg) {
@@ -231,17 +228,10 @@
     }
 
     function resetBuilder() {
-      plate = []; loadedTemplateId = null;
-      tmplUpdateBtn.disabled = true;
+      plate = [];
       nameEl.value = ""; noteEl.value = "";
       tsEl.value = nowInput();
       renderPlate();
-    }
-
-    function templateItemsPayload() {
-      return plate.map((it) => ({
-        food_id: it.food_id, name: it.name, carbs_g: it.carbs_g, calories: it.calories, count: it.count,
-      }));
     }
 
     function refreshRecent() {
@@ -269,8 +259,6 @@
       nameEl, tmplList, () => templates,
       (t) => {
         nameEl.value = t.name;
-        loadedTemplateId = t.id;
-        tmplUpdateBtn.disabled = false;
         plate = (t.items || []).map((i) => ({
           food_id: i.food_id, name: i.name, carbs_g: i.carbs_g, calories: i.calories, count: i.count,
         }));
@@ -294,31 +282,9 @@
         .then(() => status(`Saved "${name}" to the library.`));
     });
 
-    tmplSaveNewBtn.addEventListener("click", () => {
-      const name = nameEl.value.trim();
-      if (!name) { status("Enter a meal name first."); return; }
-      if (!plate.length) { status("Add at least one food."); return; }
-      fetch("/api/meal-templates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, items: templateItemsPayload() }),
-      })
-        .then((r) => r.json())
-        .then((t) => { loadedTemplateId = t.id; tmplUpdateBtn.disabled = false; return loadTemplates(); })
-        .then(() => status("Saved as a new meal."));
-    });
-
-    tmplUpdateBtn.addEventListener("click", () => {
-      if (!loadedTemplateId) return;
-      fetch(`/api/meal-templates/${loadedTemplateId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: nameEl.value.trim(), items: templateItemsPayload() }),
-      }).then(() => loadTemplates()).then(() => status("Saved meal updated."));
-    });
-
     logBtn.addEventListener("click", () => {
       if (!plate.length) { status("Add at least one food."); return; }
+      const named = !!nameEl.value.trim();
       fetch("/api/meal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -328,7 +294,9 @@
         }),
       })
         .then((r) => r.json())
-        .then(() => { resetBuilder(); refreshRecent(); status("Meal logged."); })
+        // A named meal is also saved to the library (created or updated by name).
+        .then(() => loadTemplates())
+        .then(() => { resetBuilder(); refreshRecent(); status(named ? "Meal logged & saved." : "Meal logged."); })
         .catch(() => status("Could not log meal."));
     });
 

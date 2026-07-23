@@ -46,7 +46,7 @@
 
   <section id="tab-meal" class="logform hidden">
     <div id="meal-builder">
-      <label>Meal
+      <label>Meal <span class="muted">— naming it saves it for next time</span>
         <div class="combo">
           <div class="combo-field">
             <input type="text" id="meal-name" autocomplete="off"
@@ -54,8 +54,6 @@
                    placeholder="name, or pick a saved meal">
             <ul id="tmpl-suggest" class="combo-list" role="listbox" hidden></ul>
           </div>
-          <button type="button" id="tmpl-update" class="combo-btn" disabled title="Update the saved meal">Update</button>
-          <button type="button" id="tmpl-savenew" class="combo-btn" title="Save this plate as a new meal">Save as new</button>
         </div>
       </label>
 
@@ -71,7 +69,7 @@
                    placeholder="add a food (pick or type)">
             <ul id="food-suggest" class="combo-list" role="listbox" hidden></ul>
           </div>
-          <button type="button" id="save-to-library" class="combo-btn" title="Save this food to the library">＋ Lib</button>
+          <button type="button" id="save-to-library" class="combo-btn" title="Save this food to the library">+
         </div>
         <div class="additem-nums">
           <label>Carbs (g)<input type="number" id="food-carbs" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
