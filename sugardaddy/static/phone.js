@@ -37,6 +37,32 @@
     });
   });
 
+  // Brief success confirmation overlay so a fast tap gives visible feedback.
+  let toastTimer = null;
+  let toastHide = null;
+  function toast(msg) {
+    const el = document.getElementById("toast");
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+    void el.offsetWidth; // reflow so the transition re-fires on rapid repeats
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    clearTimeout(toastHide);
+    toastTimer = setTimeout(() => {
+      el.classList.remove("show");
+      toastHide = setTimeout(() => { if (!el.classList.contains("show")) el.hidden = true; }, 250);
+    }, 1600);
+  }
+
+  // Insulin uses an HTMX form; confirm on a successful post.
+  const insulinForm = document.querySelector("#tab-insulin form");
+  if (insulinForm) {
+    insulinForm.addEventListener("htmx:afterRequest", (e) => {
+      if (e.detail && e.detail.successful) toast("Dose logged");
+    });
+  }
+
   // ================= live refresh (current reading + mini chart) =============
   const REFRESH_MS = 60000;
 
@@ -306,7 +332,7 @@
         .then((r) => r.json())
         // A named meal is also saved to the library (created or updated by name).
         .then(() => loadTemplates())
-        .then(() => { resetBuilder(); refreshRecent(); status(named ? "Meal logged & saved." : "Meal logged."); })
+        .then(() => { resetBuilder(); refreshRecent(); toast(named ? "Meal logged & saved" : "Meal logged"); })
         .catch(() => status("Could not log meal."));
     });
 

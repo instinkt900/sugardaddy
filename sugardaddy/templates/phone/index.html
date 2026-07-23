@@ -5,6 +5,8 @@
 {% block content %}
 <main class="phone-wrap">
 
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
   <header id="current" class="current {% if current.has_reading %}{% if current.is_low %}is-low{% elif current.is_high %}is-high{% else %}in-range{% endif %}{% endif %}">
     {% if current.has_reading %}
       <div class="current-value">{{ current.value }}<span class="trend">{{ current.trend }}</span></div>

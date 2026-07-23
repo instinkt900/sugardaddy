@@ -84,6 +84,31 @@ input, select {
 }
 input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 
+/* transient success confirmation for logging a dose/meal */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(28px, env(safe-area-inset-bottom));
+  transform: translate(-50%, 14px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 22px;
+  border-radius: 999px;
+  background: var(--in);
+  color: #06210f;
+  font-weight: 700;
+  font-size: 15px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+}
+.toast::before { content: "✓"; font-size: 16px; font-weight: 800; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { .toast { transition: opacity .2s ease; transform: translate(-50%, 0); } }
+
 .ts-row { display: flex; gap: 6px; align-items: stretch; }
 .ts-row input[type="datetime-local"] { flex: 1; min-width: 0; }
 
