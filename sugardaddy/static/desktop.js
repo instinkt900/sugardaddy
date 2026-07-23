@@ -6,6 +6,50 @@
   let chart = null;
   let FOODS = []; // cached food library for item pickers/datalist
 
+  function roundRect(ctx, x, y, w, h, r) {
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // A pill at the tip of the glucose line showing the latest reading.
+  const lastValueTag = {
+    id: "lastValueTag",
+    afterDatasetsDraw(chart) {
+      const meta = chart.getDatasetMeta(0); // dataset 0 = glucose line
+      const pts = chart.data.datasets[0] && chart.data.datasets[0].data;
+      if (!meta || !meta.data.length || !pts || !pts.length) return;
+      const pt = meta.data[meta.data.length - 1];
+      const val = pts[pts.length - 1].y;
+      if (pt == null || val == null) return;
+      const { ctx, chartArea: a } = chart;
+      const label = `${val}`;
+      ctx.save();
+      ctx.font = "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      const pad = 7, w = ctx.measureText(label).width + pad * 2, h = 20;
+      let bx = pt.x + 9;
+      if (bx + w > a.right) bx = pt.x - 9 - w; // flip inward near the right edge
+      let by = Math.max(a.top, Math.min(pt.y - h / 2, a.bottom - h));
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#4f8cff";
+      ctx.fill();
+      roundRect(ctx, bx, by, w, h, 6);
+      ctx.fillStyle = "#4f8cff";
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "left";
+      ctx.fillText(label, bx + pad, by + h / 2 + 0.5);
+      ctx.restore();
+    },
+  };
+
   // Vertical crosshair that follows the mouse and labels the time under it.
   const crosshair = {
     id: "crosshair",
@@ -142,7 +186,7 @@
                title: { display: true, text: data.units, color: "#8b90a0" } },
         },
       },
-      plugins: [SD.targetBand(data.target_low, data.target_high), crosshair],
+      plugins: [SD.targetBand(data.target_low, data.target_high), lastValueTag, crosshair],
     });
   }
 
