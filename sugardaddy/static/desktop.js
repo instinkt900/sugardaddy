@@ -6,6 +6,50 @@
   let chart = null;
   let FOODS = []; // cached food library for item pickers/datalist
 
+  // Vertical crosshair that follows the mouse and labels the time under it.
+  const crosshair = {
+    id: "crosshair",
+    afterEvent(chart, args) {
+      const e = args.event;
+      const a = chart.chartArea;
+      let x = null;
+      if (e.type !== "mouseout" && e.x != null &&
+          e.x >= a.left && e.x <= a.right && e.y >= a.top && e.y <= a.bottom) {
+        x = e.x;
+      }
+      if (chart._crosshairX !== x) { chart._crosshairX = x; args.changed = true; }
+    },
+    afterDraw(chart) {
+      const x = chart._crosshairX;
+      if (x == null) return;
+      const { ctx, chartArea: a, scales } = chart;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x, a.top);
+      ctx.lineTo(x, a.bottom);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(232,234,240,0.4)";
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Time label, kept inside the plot area.
+      const label = SD.stamp(scales.x.getValueForPixel(x));
+      ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      const pad = 5, w = ctx.measureText(label).width + pad * 2, h = 18;
+      let bx = x + 6;
+      if (bx + w > a.right) bx = x - 6 - w;
+      const by = a.top + 2;
+      ctx.fillStyle = "rgba(28,31,40,0.95)";
+      ctx.strokeStyle = "rgba(232,234,240,0.2)";
+      ctx.fillRect(bx, by, w, h);
+      ctx.strokeRect(bx, by, w, h);
+      ctx.fillStyle = "#e8eaf0";
+      ctx.textBaseline = "top";
+      ctx.fillText(label, bx + pad, by + 3);
+      ctx.restore();
+    },
+  };
+
   // ---- range ----
   function nowInput(offsetHours = 0) {
     const d = new Date(Date.now() - offsetHours * 3600e3);
@@ -98,7 +142,7 @@
                title: { display: true, text: data.units, color: "#8b90a0" } },
         },
       },
-      plugins: [SD.targetBand(data.target_low, data.target_high)],
+      plugins: [SD.targetBand(data.target_low, data.target_high), crosshair],
     });
   }
 
