@@ -35,7 +35,10 @@
         </select>
       </label>
       <label>Time
-        <input type="datetime-local" name="ts" value="{{ now_input }}">
+        <div class="ts-row">
+          <input type="datetime-local" id="insulin-ts" name="ts" value="{{ now_input }}">
+          <button type="button" class="combo-btn now-btn" data-now="insulin-ts">Now</button>
+        </div>
       </label>
       <label>Note
         <input type="text" name="note" placeholder="optional">
@@ -87,7 +90,10 @@
       </div>
 
       <label>Time
-        <input type="datetime-local" id="meal-ts" value="{{ now_input }}">
+        <div class="ts-row">
+          <input type="datetime-local" id="meal-ts" value="{{ now_input }}">
+          <button type="button" class="combo-btn now-btn" data-now="meal-ts">Now</button>
+        </div>
       </label>
       <label>Note
         <input type="text" id="meal-note" placeholder="optional">

@@ -28,6 +28,15 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
+  // "Now" buttons: reset an adjacent datetime input to the current time (the
+  // prefilled value goes stale if the app is left open for a while).
+  document.querySelectorAll("[data-now]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const el = document.getElementById(btn.dataset.now);
+      if (el) el.value = nowInput();
+    });
+  });
+
   // ================= live refresh (current reading + mini chart) =============
   const REFRESH_MS = 60000;
 

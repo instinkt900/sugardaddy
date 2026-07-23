@@ -84,6 +84,9 @@ input, select {
 }
 input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 
+.ts-row { display: flex; gap: 6px; align-items: stretch; }
+.ts-row input[type="datetime-local"] { flex: 1; min-width: 0; }
+
 .combo { display: flex; gap: 6px; align-items: stretch; }
 .combo-field { position: relative; flex: 1; min-width: 0; }
 .combo-field input[type="text"] { width: 100%; }
