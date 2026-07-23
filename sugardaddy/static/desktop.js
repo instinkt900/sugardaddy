@@ -276,9 +276,33 @@
   function esc(s) { return (s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
   function attr(s) { return (s ?? "").replace(/"/g, "&quot;"); }
 
+  // ---- live auto-refresh ----
+  // Keep the dashboard current without a manual reload. Skip while the tab is
+  // hidden or a row is mid-edit (so we never clobber an in-progress edit/add),
+  // and when a preset is active slide its window forward to "now".
+  const REFRESH_MS = 60000;
+
+  function isEditing() {
+    return !!document.querySelector(
+      "#insulin-table input, #insulin-table select, #meal-table input, #meal-table select, #known-table input"
+    );
+  }
+
+  function autoRefresh() {
+    if (document.hidden || isEditing()) return;
+    const preset = document.querySelector(".range-presets button.active");
+    if (preset) {
+      fromEl.value = nowInput(parseInt(preset.dataset.hours, 10));
+      toEl.value = nowInput(0);
+    }
+    load();
+  }
+
   // ---- init ----
   fromEl.value = nowInput(24);
   toEl.value = nowInput(0);
   document.querySelector('.range-presets button[data-hours="24"]').classList.add("active");
   window.addEventListener("load", load);
+  setInterval(autoRefresh, REFRESH_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) autoRefresh(); });
 })();

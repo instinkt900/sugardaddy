@@ -12,7 +12,41 @@
     });
   });
 
-  // --- mini chart ---
+  // --- live refresh ---
+  // The current reading and mini chart refresh on a timer and whenever the tab
+  // regains focus, so leaving the app open (or returning to it) shows fresh
+  // glucose without a manual reload. Roughly matches the ~1/min sensor cadence.
+  const REFRESH_MS = 60000;
+
+  // --- current reading (big number + trend + status colour) ---
+  function statusClass(c) {
+    if (!c.has_reading) return "";
+    if (c.is_low) return "is-low";
+    if (c.is_high) return "is-high";
+    return "in-range";
+  }
+
+  function renderCurrent(c) {
+    const el = document.getElementById("current");
+    if (!el) return;
+    el.className = ("current " + statusClass(c)).trim();
+    if (c.has_reading) {
+      el.innerHTML =
+        `<div class="current-value">${c.value}<span class="trend">${c.trend}</span></div>` +
+        `<div class="current-meta">${c.units} · ${c.minutes_ago} min ago</div>`;
+    } else {
+      el.innerHTML =
+        `<div class="current-value">—</div>` +
+        `<div class="current-meta">no glucose reading yet</div>`;
+    }
+  }
+
+  function updateCurrent() {
+    return fetch("/api/current").then((r) => r.json()).then(renderCurrent).catch(() => {});
+  }
+
+  // --- mini chart (reuse one instance; update data on refresh) ---
+  let miniChart = null;
   function draw() {
     const ctx = document.getElementById("mini-chart");
     if (!ctx || typeof Chart === "undefined") return;
@@ -20,7 +54,12 @@
       .then((r) => r.json())
       .then((data) => {
         const pts = data.glucose.map((p) => ({ x: p.t, y: p.v }));
-        new Chart(ctx, {
+        if (miniChart) {
+          miniChart.data.datasets[0].data = pts;
+          miniChart.update("none");
+          return;
+        }
+        miniChart = new Chart(ctx, {
           type: "line",
           data: { datasets: [{
             data: pts, borderColor: "#4f8cff", borderWidth: 2,
@@ -42,6 +81,8 @@
       })
       .catch(() => {});
   }
+
+  function refresh() { updateCurrent(); draw(); }
 
   // --- meal suggestions: custom combobox (saved shortcuts + recent meals) ---
   // A native <datalist> proved unreliable on mobile (won't open, autocomplete
@@ -188,5 +229,9 @@
     loadSuggestions();
   }
 
-  window.addEventListener("load", draw);
+  window.addEventListener("load", refresh);
+  // Timed refresh (skip while the tab is hidden to save battery/network) plus an
+  // immediate refresh when the user returns to the app.
+  setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
 })();
