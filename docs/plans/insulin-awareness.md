@@ -11,31 +11,47 @@ reasoning aren't lost.
 
 ---
 
-## Motivation — the real goal
+## Motivation — de-vibe the dose
 
-The headline feature is **not** a bolus calculator. It's a lightweight
-**situational-awareness nudge** on the insulin logger.
+The main goal is to **calculate something concrete to check a dose against**, so
+the decision isn't made purely on vibes.
 
 The user already does the right reasoning by hand: "glucose is already dropping,
 I'll take a bit less" / "it's high and still rising, I'll take a bit more." But
 the human mind runs on vibes — when tired, sick, busy, or distracted, that
-scrutiny gets skipped and the dose is taken on autopilot. Occasionally that
+scrutiny gets skipped and the dose goes in on autopilot. Occasionally that
 autopilot is wrong (see the stacked-correction low below).
 
-So the goal is a glanceable prompt, right where insulin is logged, that **catches
-the eye only when the current situation is notable** and says something like:
+The fix is an **external anchor**: a figure the app calculates, sitting right
+where insulin is logged, that the user reconciles against their own intuition.
+The de-vibe effect comes from the *reconciliation*, not from trusting the number:
 
-- *"You may be more sensitive to insulin right now"* (falling, recent low, or
-  insulin still active), or
-- *"You're falling behind on your levels"* (high and still rising).
+> "The calculator says 12 u but I feel like I only need 6 — let me look at the
+> situation and find where the disconnect is."
 
-The point is to **make the user stop for a moment and review the data before
-dosing** — not to compute the dose for them. It should be quiet when nothing is
-notable (no alarm fatigue) and only speak up when the trajectory deviates from
-"in range and steady."
+That moment of "why do we disagree?" is the whole point. The number exists to be
+**questioned**, and the act of questioning it forces the review that vibes-mode
+skips. A calculator the user obeys blindly would be *worse* than none; one they
+argue with is the goal.
 
-This is the north star; the calculator (below) is a distant, curiosity-driven
-extra.
+Two complementary anchors, same purpose — give the gut something concrete to
+argue with:
+
+1. **Awareness nudge** (ships first; lightweight, always-on). A glanceable prompt
+   that surfaces the current trajectory — *"you may be more sensitive right now"*
+   / *"you're running high and still climbing"* — plus active IOB. Cheap and safe:
+   no assumptions about personal ratios, and it catches the eye only when the
+   situation is notable.
+2. **Calculated reference / bolus figure** (stretch goal, experimental — see
+   [Layer 4](#layer-4--bolus-calculator--calculated-reference-stretch-goal-experimental)).
+   A richer, IOB-aware suggested amount to reconcile against. Built as much for
+   academic interest and the fun of seeing how accurate it can get as for daily
+   use — and genuinely useful as an extra data point for judgement calls, **never**
+   as a directive.
+
+Both are the same idea at different fidelity. The awareness nudge is the reliable
+first deliverable; the full calculator is a thing to build, tune, and play with as
+the data justifies it.
 
 ---
 
@@ -145,16 +161,23 @@ Design rules:
   compare against the user's configured ISF. Framed as a check, not a source.
 - Once carb coverage is high enough, do the same for ICR from meal boluses.
 
-### Layer 4 — experimental bolus calculator (curiosity, explicitly gated)
-A personal-curiosity feature to see *how accurate a suggestion could get* — the
-user is confident with their own ranges and does **not** want it as a dosing
-guide.
-- Combine current BG, target, ISF, ICR, carbs, **minus IOB** (the IOB
-  subtraction is the anti-stacking guard).
-- Prefer showing the **inputs** ("≈ 3.2 u active · ~4 above target at your set
-  ISF") over emitting a single dose number.
-- If a number is shown at all: behind an explicit opt-in, clearly labelled
-  **experimental / not a dosing guide**, and never the default view.
+### Layer 4 — bolus calculator / calculated reference (stretch goal, experimental)
+A genuine build goal, not a throwaway — pursued for academic interest and the fun
+of tuning it, and doubling as the richer anchor from the motivation. It is **not**
+a dosing directive: the user is confident with their own ranges and wants the
+number as something to *reconcile against*, per the "says 12, I feel 6" example.
+- Combine current BG, target, ISF, ICR, carbs, **minus IOB** (the IOB subtraction
+  is the anti-stacking guard).
+- Show the calculated figure **and its components** ("≈ 3.2 u active · ~4 above
+  target at your set ISF · N g carbs") so a disagreement is *diagnosable* — the
+  user can see which input drives the gap between the number and their gut.
+- Design it to **invite disagreement**: surface the reasoning, make it easy to see
+  why the number is what it is. Never present a single authoritative dose.
+- Clearly labelled experimental / a cross-check, not a guide; opt-in, not the
+  default view.
+- Accuracy tracks data: gate on configured ISF/ICR and enough clean history, and
+  show it as rough (and say so) until then. Prototyping it early for fun is fine;
+  wiring it into the daily logging flow waits for the data to justify it.
 
 ---
 
@@ -164,8 +187,11 @@ guide.
   nudge restates trajectory + recent context. Neither suggests an amount.
 - **A bolus calculator (Layer 4) is a regulated medical-device function** — it's
   exactly what the app's "not a medical device" stance carves out. Building it,
-  even for personal use, crosses that line deliberately, not by accident. Keep it
-  opt-in, labelled experimental, off by default.
+  even for personal use, crosses that line deliberately, not by accident. It is an
+  experiment and a cross-check, never a directive: its design goal is to be
+  *questioned* — it shows its components so a disconnect with the user's judgement
+  is diagnosable, and the user's own call always wins. Keep it opt-in and labelled
+  experimental; a confident number on a shaky ISF is worse than no number.
 - **Parameters (DIA, tp, ISF, ICR, target) are user/clinician-owned.** The app
   never silently picks or auto-tunes them; a confident number on a shaky ISF is
   worse than no number.

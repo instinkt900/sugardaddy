@@ -256,12 +256,14 @@ of the same UTC timeline, so they're additive rather than rewrites.
   on one timeline, learn per-meal/per-time-of-day response patterns and surface
   likely highs/lows. Strictly decision-support for review with a clinician — not
   dosing advice.
-- **Insulin-on-board & dosing-awareness nudge.** Track active rapid-acting
-  insulin (IOB) and surface a glanceable, non-prescriptive prompt on the insulin
-  logger when the current trajectory is notable ("you may be more sensitive right
-  now" / "you're running high and still climbing") — to prompt a pause and review
-  before dosing, not to suggest an amount. Full write-up, formulas, and the
-  safety boundary in [`docs/plans/insulin-awareness.md`](docs/plans/insulin-awareness.md).
+- **Insulin-on-board & dosing-awareness ("de-vibe the dose").** Calculate a
+  concrete anchor to check a dose against, right where insulin is logged, so it
+  isn't decided on vibes. Ships as a glanceable, non-prescriptive nudge (active
+  IOB + trajectory: "you may be more sensitive right now" / "you're running high
+  and still climbing"). A fuller IOB/ISF/ICR **bolus calculator** is a stretch
+  goal — built for academic interest and as an extra data point to *reconcile
+  against* ("it says 12 u, I feel 6 — why?"), never a directive. Full write-up,
+  formulas, and the safety boundary in [`docs/plans/insulin-awareness.md`](docs/plans/insulin-awareness.md).
 - **Nice-to-haves.** Alerts/notifications on sustained highs/lows; optional auth
   if ever exposed beyond a trusted LAN/VPN; photo attachments on meals; CSV/export
   of the combined timeline.
