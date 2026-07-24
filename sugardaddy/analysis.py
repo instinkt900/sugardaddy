@@ -97,6 +97,7 @@ def post_meal_responses(
                 "minutes_to_peak": round((peak.ts_utc - meal.ts_utc) / 60),
             }
         )
+    out.sort(key=lambda d: d["ts_utc"], reverse=True)  # most recent meal first
     return out
 
 
