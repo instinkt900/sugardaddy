@@ -104,8 +104,28 @@ sugardaddy serve    -c config.toml            # web app + glucose poller
 sugardaddy ingest   -c config.toml [--once]   # poller only (--once = sync + exit)
 sugardaddy backfill -c config.toml --days 90  # one-time HA history seed
 sugardaddy init-db  -c config.toml            # create the DB schema and exit
+sugardaddy report   -c config.toml [--days N] # retrospective analysis (text/--json)
 ```
 Add `-v` for debug logging.
+
+### `report` — retrospective analysis
+
+Prints a read of the stored timeline over a window (default 14 days): overall
+time-in-range / average / estimated GMI, glucose variability (SD and CV),
+per-day and per-hour-of-day breakdowns, discrete low episodes (contiguous
+below-range runs collapsed into single events), an insulin dose summary by kind,
+carb-logging coverage, and the 2-hour glucose response after each logged meal.
+It is deterministic number-crunching only — it makes no clinical judgements.
+
+```bash
+sugardaddy report -c config.toml --days 7           # human-readable text
+sugardaddy report -c config.toml --days 30 --json   # machine-readable JSON
+sugardaddy report -c config.toml --db /tmp/copy.db   # analyse a different DB file
+```
+
+`--db` overrides the database path from the config (units, target range, and
+timezone are still taken from the config), which is handy for analysing a copy
+of the live database pulled off the serve host.
 
 ## Setup — serve side (Docker)
 

@@ -4,6 +4,7 @@
   sugardaddy ingest    — run only the glucose poller (or --once)
   sugardaddy backfill  — one-shot import of history from Home Assistant
   sugardaddy init-db   — create the SQLite schema and exit
+  sugardaddy report    — print a retrospective analysis (text or --json)
 """
 
 from __future__ import annotations
@@ -44,6 +45,12 @@ def main(argv: list[str] | None = None) -> int:
     p_init = sub.add_parser("init-db", help="create the SQLite schema and exit")
     p_init.add_argument("-c", "--config", required=True, help="path to config.toml")
 
+    p_report = sub.add_parser("report", help="print a retrospective analysis (text or --json)")
+    p_report.add_argument("-c", "--config", required=True, help="path to config.toml (units/targets/tz)")
+    p_report.add_argument("--db", default="", help="analyse this DB file instead of the one in the config")
+    p_report.add_argument("--days", type=int, default=14, help="window size in days (default: 14)")
+    p_report.add_argument("--json", action="store_true", help="emit JSON instead of text")
+
     args = parser.parse_args(argv)
     _setup_logging(args.verbose)
 
@@ -67,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
         Database(cfg.database.path).init_db()
         print(f"initialised {cfg.database.path}")
         return 0
+    if args.command == "report":
+        from sugardaddy.report import run_report
+
+        return run_report(args.config, db_path=args.db, days=args.days, as_json=args.json)
 
     parser.print_help(sys.stderr)
     return 2
