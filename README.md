@@ -127,6 +127,31 @@ sugardaddy report -c config.toml --db /tmp/copy.db   # analyse a different DB fi
 timezone are still taken from the config), which is handy for analysing a copy
 of the live database pulled off the serve host.
 
+### `sugardaddy-review` skill (Claude Code, optional)
+
+`deploy/skills/sugardaddy-review/` is a Claude Code skill that fetches the live
+DB off the serve host, runs `report --json`, and writes a management-focused
+review — comparing against the previous run and keeping a local history so
+trends are visible over time. It does the fetch + interpretation; the maths is
+still `sugardaddy report`.
+
+Install it on any machine you use:
+
+```bash
+bash deploy/install-skill.sh
+```
+
+That copies the skill into `~/.claude/skills/sugardaddy-review/` and seeds a
+machine-local `connection.env`. Edit it to point at your serve host:
+
+```bash
+$EDITOR ~/.claude/skills/sugardaddy-review/connection.env   # set SD_REVIEW_HOST etc.
+```
+
+`connection.env` (your host/paths) and the review `history/` (glucose data) are
+per-machine and never committed — only `connection.env.example` is tracked. Then
+in Claude Code, ask to "review my sugardaddy data" (or run `/sugardaddy-review`).
+
 ## Setup — serve side (Docker)
 
 1. Configure and add secrets:

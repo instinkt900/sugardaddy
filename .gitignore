@@ -21,3 +21,6 @@ venv/
 build/
 dist/
 .pytest_cache/
+
+# machine-local skill connection details (never commit)
+connection.env
