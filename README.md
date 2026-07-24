@@ -1,4 +1,4 @@
-# sugardaddy
+# Sugar Daddy
 
 A small, self-contained app for people using a **FreeStyle Libre** CGM: it
 ingests your glucose readings over time, lets you log **insulin doses** and
@@ -9,7 +9,7 @@ It talks **directly to LibreLinkUp** (the same sharing service the Home Assistan
 Libre integration uses under the hood), so it needs no Home Assistant at runtime.
 Everything runs on your own infrastructure.
 
-> **Not a medical device.** sugardaddy is for personal record-keeping and
+> **Not a medical device.** Sugar Daddy is for personal record-keeping and
 > *retrospective* analysis — spotting patterns to discuss with your care team. It
 > must **not** be used for real-time dosing decisions.
 
@@ -248,7 +248,7 @@ of the same UTC timeline, so they're additive rather than rewrites.
     command. Good for deep retrospective history; not something to repeat weekly.
   - *Ongoing* — Samsung Health already syncs into Android **Health Connect**, and
     the Home Assistant Android companion app can expose Health Connect metrics as
-    HA sensors. sugardaddy would then pull activity from HA the same way it can
+    HA sensors. Sugar Daddy would then pull activity from HA the same way it can
     seed glucose from HA — no custom phone app, no Samsung developer approval.
   - Storage would be a small `activity` table (steps, heart-rate readings,
     workouts) on the shared timeline, joinable against glucose/meals/insulin.

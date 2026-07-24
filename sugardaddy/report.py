@@ -80,7 +80,7 @@ def _local(ts: int, tzinfo) -> str:
 def _fmt_text(rep: dict, tzinfo) -> str:
     u = rep["units"]
     L = []
-    L.append(f"sugardaddy report — last {rep['window_days']} days ({rep['timezone']}, {u})")
+    L.append(f"Sugar Daddy report — last {rep['window_days']} days ({rep['timezone']}, {u})")
     L.append(f"target range {rep['target_low']}–{rep['target_high']} {u}")
     span = rep["reading_span"]
     if span:

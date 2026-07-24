@@ -119,7 +119,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     tz = _tz(cfg)
 
     templates = Jinja2Templates(directory=str(_HERE / "templates"))
-    app = FastAPI(title="sugardaddy", version=__version__)
+    app = FastAPI(title="Sugar Daddy", version=__version__)
     app.mount("/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 
     @app.middleware("http")
@@ -291,8 +291,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     # --- PWA (installable web app) --------------------------------------
 
     _MANIFEST = {
-        "name": "sugardaddy",
-        "short_name": "sugardaddy",
+        "name": "Sugar Daddy",
+        "short_name": "Sugar Daddy",
         "description": "Glucose, insulin and meal logging",
         "start_url": "/",
         "scope": "/",
