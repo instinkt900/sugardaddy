@@ -84,11 +84,12 @@ input, select {
 }
 input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 
-/* insulin-on-board hint above the dose input — informational, not a suggestion */
+/* insulin-on-board hint under the glucose tile — informational, not a suggestion */
 .iob-hint {
   font-size: 14px;
   font-weight: 600;
   color: var(--in);
+  text-align: center;
   padding: 8px 12px;
   border-radius: 10px;
   background: var(--card-2);

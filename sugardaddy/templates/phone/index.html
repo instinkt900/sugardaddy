@@ -17,6 +17,10 @@
     {% endif %}
   </header>
 
+  <div id="iob-hint" class="iob-hint{% if not current.iob %} muted{% endif %}">
+    {% if current.iob %}≈ {{ current.iob }} u insulin on board{% if current.iob_dose_count %} · {{ current.iob_dose_count }} recent dose{{ 's' if current.iob_dose_count != 1 }}{% endif %}{% else %}No insulin on board{% endif %}
+  </div>
+
   <section class="chart-card">
     <canvas id="mini-chart" height="160"></canvas>
   </section>
@@ -28,26 +32,15 @@
 
   <section id="tab-insulin" class="logform">
     <form hx-post="/api/insulin" hx-target="#recent" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) this.reset()">
-      <div id="iob-hint" class="iob-hint{% if not current.iob %} muted{% endif %}">
-        {% if current.iob %}≈ {{ current.iob }} u insulin on board{% if current.iob_dose_count %} · {{ current.iob_dose_count }} recent dose{{ 's' if current.iob_dose_count != 1 }}{% endif %}{% else %}No insulin on board{% endif %}
+      <input type="number" name="units" step="0.5" min="0" inputmode="decimal" required autofocus placeholder="units" aria-label="Units">
+      <select name="kind" aria-label="Insulin type">
+        {% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+      </select>
+      <div class="ts-row">
+        <input type="datetime-local" id="insulin-ts" name="ts" value="{{ now_input }}" aria-label="Time">
+        <button type="button" class="combo-btn now-btn" data-now="insulin-ts">Now</button>
       </div>
-      <label>Units
-        <input type="number" name="units" step="0.5" min="0" inputmode="decimal" required autofocus>
-      </label>
-      <label>Type
-        <select name="kind">
-          {% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
-        </select>
-      </label>
-      <label>Time
-        <div class="ts-row">
-          <input type="datetime-local" id="insulin-ts" name="ts" value="{{ now_input }}">
-          <button type="button" class="combo-btn now-btn" data-now="insulin-ts">Now</button>
-        </div>
-      </label>
-      <label>Note
-        <input type="text" name="note" placeholder="optional">
-      </label>
+      <input type="text" name="note" placeholder="optional note" aria-label="Note">
       <button type="submit" class="big-btn">Log insulin</button>
     </form>
   </section>
