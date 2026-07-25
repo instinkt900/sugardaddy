@@ -234,7 +234,10 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 .data-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table input, .data-table select { padding: 6px; font-size: 14px; }
-.row-actions { display: flex; gap: 6px; }
+/* stay a table-cell (not display:flex) so it keeps row height + vertical-align
+   when sibling cells wrap to two lines; space the buttons inline instead */
+.row-actions { white-space: nowrap; vertical-align: middle; }
+.row-actions .icon-btn + .icon-btn { margin-left: 6px; }
 .icon-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 4px 8px; }
 .icon-btn.danger { color: var(--low); border-color: var(--low); }
 .icon-btn.save { color: var(--in); border-color: var(--in); }
