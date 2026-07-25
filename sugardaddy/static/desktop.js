@@ -158,6 +158,7 @@
     const ctx = document.getElementById("main-chart");
     if (typeof Chart === "undefined") return;
     const g = data.glucose.map((p) => ({ x: p.t, y: p.v }));
+    const iob = (data.iob || []).map((p) => ({ x: p.t, y: p.v }));
     const ys = g.map((p) => p.y);
     const yMin = ys.length ? Math.min(...ys) : 0;
     const yMax = ys.length ? Math.max(...ys) : 10;
@@ -180,6 +181,11 @@
             backgroundColor: "#4f8cff", pointStyle: "triangle", radius: 7, parsing: false },
           { type: "scatter", label: "Meal", data: meals, borderColor: "#ffb020",
             backgroundColor: "#ffb020", pointStyle: "rectRot", radius: 7, parsing: false },
+          // Active-insulin (IOB) curve on its own right-hand axis; drawn behind
+          // the glucose line (order:1) and translucent so it never hides it.
+          { type: "line", label: "Insulin active (u)", data: iob, yAxisID: "y1",
+            borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.15)",
+            borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, parsing: false, order: 1 },
         ],
       },
       options: {
@@ -187,13 +193,18 @@
         interaction: { mode: "nearest", intersect: true },
         plugins: {
           legend: { labels: { color: "#e8eaf0" } },
-          tooltip: { callbacks: { label: (c) => c.raw.label || `${c.parsed.y} ${data.units}` } },
+          tooltip: { callbacks: { label: (c) =>
+            c.raw.label ||
+            (c.dataset.yAxisID === "y1" ? `${c.parsed.y} u active` : `${c.parsed.y} ${data.units}`) } },
         },
         scales: {
           x: { type: "linear", ticks: { color: "#8b90a0", maxTicksLimit: 10, callback: (v) => SD.stamp(v) },
                grid: { color: "#2c303c" } },
           y: { ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
                title: { display: true, text: data.units, color: "#8b90a0" } },
+          y1: { position: "right", beginAtZero: true, ticks: { color: "#8b90a0" },
+                grid: { display: false },
+                title: { display: true, text: "insulin (u)", color: "#8b90a0" } },
         },
       },
       plugins: [SD.targetBand(data.target_low, data.target_high), lastValueTag, crosshair],

@@ -350,6 +350,26 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     def api_timeline(request: Request):
         start, end = range_from_query(request)
         readings = db.readings_between(start, end)
+        # Active-insulin curve across the window: aggregate rapid-acting IOB
+        # sampled on a regular grid. Pull doses from a DIA before the start so the
+        # value is correct at the left edge; cap the grid at ~500 points so long
+        # ranges stay light. Shares iob.active_iob with the rest of the app.
+        dia = cfg.insulin.dia_minutes
+        iob_doses = db.doses_between(start - dia * 60, end)
+        step = max(300, (end - start) // 500)
+        iob = []
+        t = start
+        while t <= end:
+            iob.append(
+                {
+                    "t": t * 1000,
+                    "v": round(
+                        active_iob(iob_doses, t, dia_minutes=dia, peak_minutes=cfg.insulin.peak_minutes),
+                        2,
+                    ),
+                }
+            )
+            t += step
         return {
             "units": cfg.web.units,
             "target_low": cfg.web.target_low,
@@ -360,6 +380,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             ],
             "doses": [dose_json(d) for d in db.doses_between(start, end)],
             "meals": [meal_json(m) for m in db.meals_between(start, end)],
+            "iob": iob,
         }
 
     @app.get("/api/entries")
