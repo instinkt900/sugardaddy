@@ -156,8 +156,8 @@ in Claude Code, ask to "review my sugardaddy data" (or run `/sugardaddy-review`)
 
 1. Configure and add secrets:
    ```bash
-   cp config.example.toml docker/config.toml   # edit [librelink].region, [web] tz/units
-   cp docker/.env.example docker/.env          # LibreLinkUp email + password
+   cp config.example.toml config.toml   # edit [librelink].region, [web] tz/units
+   cp docker/.env.example docker/.env   # LibreLinkUp email + password
    ```
    Use the **LibreLinkUp** account credentials (the follower account that already
    has access to your Libre data).

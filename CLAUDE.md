@@ -111,7 +111,8 @@ pick it up.
 - Compose project + container + image are all named `sugardaddy`. Container
   listens on **8080 internally**; host port is `${SUGARDADDY_PORT:-8080}` from
   `docker/.env`. Data is a named volume `sugardaddy-data` mounted at `/data`;
-  `config.toml` is bind-mounted read-only. Healthcheck hits `/healthz`.
+  the repo-root `config.toml` is bind-mounted read-only (compose mounts
+  `../config.toml`). Healthcheck hits `/healthz`.
 - Deploy flow (run on the host, in the repo clone):
   ```
   git pull --ff-only && cd docker && docker compose up -d --build
@@ -154,7 +155,7 @@ with trend-vs-last-run. Key boundaries:
 - **No internal network details in the repo.** Use RFC 5737 placeholders
   (`192.0.2.x`) in examples. **Leak-scan every commit** for internal
   hostnames/IPs before pushing.
-- **Secrets are gitignored** (`docker/.env`, `docker/config.toml`, `config.toml`,
+- **Secrets are gitignored** (`docker/.env`, `config.toml`,
   `*.db`, `connection.env`); only `*.example` files are tracked. Never type the
   LibreLinkUp password into a shell (bash history).
 - Commit to `master` (the serve host pulls it); keep commits scoped and

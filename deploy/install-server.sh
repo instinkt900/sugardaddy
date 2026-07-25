@@ -4,20 +4,21 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_DIR/docker"
 
-if [[ ! -f config.toml ]]; then
-  echo "docker/config.toml missing — copy and edit it:"
-  echo "    cp ../config.example.toml docker/config.toml"
+# The runtime config lives in the repo root (compose mounts ../config.toml).
+if [[ ! -f "$REPO_DIR/config.toml" ]]; then
+  echo "config.toml missing — copy and edit it:"
+  echo "    cp config.example.toml config.toml"
   exit 1
 fi
-if [[ ! -f .env ]]; then
+if [[ ! -f "$REPO_DIR/docker/.env" ]]; then
   echo "docker/.env missing — create it with your LibreLinkUp credentials:"
-  echo "    cp .env.example .env   # then edit SUGARDADDY_LIBRE_EMAIL / _PASSWORD"
+  echo "    cp docker/.env.example docker/.env   # then edit SUGARDADDY_LIBRE_EMAIL / _PASSWORD"
   exit 1
 fi
 
 echo "==> building and starting sugardaddy container"
+cd "$REPO_DIR/docker"
 docker compose up -d --build
 
 echo
