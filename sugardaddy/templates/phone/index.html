@@ -28,6 +28,9 @@
 
   <section id="tab-insulin" class="logform">
     <form hx-post="/api/insulin" hx-target="#recent" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) this.reset()">
+      <div id="iob-hint" class="iob-hint{% if not current.iob %} muted{% endif %}">
+        {% if current.iob %}≈ {{ current.iob }} u insulin on board{% if current.iob_dose_count %} · {{ current.iob_dose_count }} recent dose{{ 's' if current.iob_dose_count != 1 }}{% endif %}{% else %}No insulin on board{% endif %}
+      </div>
       <label>Units
         <input type="number" name="units" step="0.5" min="0" inputmode="decimal" required autofocus>
       </label>

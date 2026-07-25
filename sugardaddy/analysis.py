@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, tzinfo
 
 from sugardaddy.constants import mgdl_to_mmol, to_display
-from sugardaddy.iob import DEFAULT_DIA_MINUTES, DEFAULT_PEAK_MINUTES, _is_rapid, active_iob
+from sugardaddy.iob import DEFAULT_DIA_MINUTES, DEFAULT_PEAK_MINUTES, active_iob, is_rapid
 from sugardaddy.models import GlucoseReading, InsulinDose, Meal
 
 # A meal's "starting" glucose is the nearest reading within this window (seconds).
@@ -114,7 +114,7 @@ def post_meal_responses(
         bolus_units = sum(
             d.units
             for d in doses
-            if _is_rapid(d) and abs(d.ts_utc - meal.ts_utc) <= _MEAL_MATCH_WINDOW
+            if is_rapid(d) and abs(d.ts_utc - meal.ts_utc) <= _MEAL_MATCH_WINDOW
         )
         # IOB at start = insulin from strictly-earlier doses still active now,
         # i.e. the depot excluding this meal's own (co-timed) bolus.

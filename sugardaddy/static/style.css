@@ -84,6 +84,18 @@ input, select {
 }
 input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 
+/* insulin-on-board hint above the dose input — informational, not a suggestion */
+.iob-hint {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--in);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+}
+.iob-hint.muted { color: var(--muted); font-weight: 400; }
+
 /* transient success confirmation for logging a dose/meal */
 .toast {
   position: fixed;

@@ -27,8 +27,9 @@ DEFAULT_PEAK_MINUTES = 75
 RAPID_KINDS = ("bolus", "correction")
 
 
-def _is_rapid(dose: InsulinDose) -> bool:
-    # An unset/empty kind is treated as a bolus, matching insulin_summary().
+def is_rapid(dose: InsulinDose) -> bool:
+    """Whether a dose counts toward rapid-acting IOB (bolus/correction, not basal).
+    An unset/empty kind is treated as a bolus, matching insulin_summary()."""
     return (dose.kind or "bolus") in RAPID_KINDS
 
 
@@ -64,7 +65,7 @@ def active_iob(
     Only doses at or before ``at_ts`` and within the action window contribute."""
     total = 0.0
     for d in doses:
-        if not _is_rapid(d):
+        if not is_rapid(d):
             continue
         minutes = (at_ts - d.ts_utc) / 60
         if minutes < 0 or minutes >= dia_minutes:

@@ -23,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 from sugardaddy import __version__
 from sugardaddy.analysis import post_meal_responses, summarize
 from sugardaddy.config import Config, load_config
+from sugardaddy.iob import active_iob, is_rapid
 from sugardaddy.constants import INSULIN_KINDS, MEAL_TYPES, to_display, trend_arrow
 from sugardaddy.db import Database
 from sugardaddy.ingest import start_background
@@ -235,20 +236,39 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         return {"doses": doses, "meals": meals, "units": cfg.web.units}
 
     def current_context() -> dict:
+        now = now_epoch()
+        # Current rapid-acting insulin-on-board from doses inside the action
+        # window. Independent of glucose, so it is reported even with no reading.
+        recent = db.doses_between(now - cfg.insulin.dia_minutes * 60, now)
+        iob = active_iob(
+            recent,
+            now,
+            dia_minutes=cfg.insulin.dia_minutes,
+            peak_minutes=cfg.insulin.peak_minutes,
+        )
+        ctx = {
+            "iob": round(iob, 1),
+            "iob_dose_count": sum(1 for d in recent if is_rapid(d)),
+        }
+
         r = db.latest_reading()
         if r is None:
-            return {"has_reading": False}
-        mins = round((now_epoch() - r.ts_utc) / 60)
-        return {
-            "has_reading": True,
-            "value": to_display(r.value_mgdl, cfg.web.units),
-            "units": cfg.web.units,
-            "trend": trend_arrow(r.trend),
-            "minutes_ago": mins,
-            "in_range": cfg.target_low_mgdl <= r.value_mgdl <= cfg.target_high_mgdl,
-            "is_low": r.value_mgdl < cfg.target_low_mgdl,
-            "is_high": r.value_mgdl > cfg.target_high_mgdl,
-        }
+            ctx["has_reading"] = False
+            return ctx
+        mins = round((now - r.ts_utc) / 60)
+        ctx.update(
+            {
+                "has_reading": True,
+                "value": to_display(r.value_mgdl, cfg.web.units),
+                "units": cfg.web.units,
+                "trend": trend_arrow(r.trend),
+                "minutes_ago": mins,
+                "in_range": cfg.target_low_mgdl <= r.value_mgdl <= cfg.target_high_mgdl,
+                "is_low": r.value_mgdl < cfg.target_low_mgdl,
+                "is_high": r.value_mgdl > cfg.target_high_mgdl,
+            }
+        )
+        return ctx
 
     # --- pages -----------------------------------------------------------
 

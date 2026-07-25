@@ -86,8 +86,26 @@
         `<div class="current-meta">no glucose reading yet</div>`;
     }
   }
+  // Insulin-on-board hint above the dose input. Descriptive only (Layer 1 of
+  // the insulin-awareness plan): it states active insulin, never a dose to take.
+  function renderIob(c) {
+    const el = document.getElementById("iob-hint");
+    if (!el) return;
+    if (c.iob) {
+      const n = c.iob_dose_count;
+      const doses = n ? ` · ${n} recent dose${n === 1 ? "" : "s"}` : "";
+      el.textContent = `≈ ${c.iob} u insulin on board${doses}`;
+      el.classList.remove("muted");
+    } else {
+      el.textContent = "No insulin on board";
+      el.classList.add("muted");
+    }
+  }
   function updateCurrent() {
-    return fetch("/api/current").then((r) => r.json()).then(renderCurrent).catch(() => {});
+    return fetch("/api/current")
+      .then((r) => r.json())
+      .then((c) => { renderCurrent(c); renderIob(c); })
+      .catch(() => {});
   }
 
   let miniChart = null;
