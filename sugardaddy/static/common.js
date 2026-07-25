@@ -10,12 +10,13 @@ window.SD = {
     const d = new Date(ms);
     return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   },
-  // Insulin dose marker colour, faintly shaded by kind so bolus / correction /
-  // basal are distinguishable at a glance without a legend.
+  // Insulin dose marker colour, shaded + hue-shifted by kind so bolus /
+  // correction / basal are distinguishable at a glance without a legend. A small
+  // cool-colour arc (sky -> blue -> indigo), kept distinct from the orange meals.
   doseColor(kind) {
-    return kind === "correction" ? "#6f9dff"
-         : kind === "basal" ? "#3f74d6"
-         : "#4f8cff"; // bolus (and any unset kind)
+    return kind === "correction" ? "#38bdf8"  // sky, lighter
+         : kind === "basal" ? "#7c6cf0"       // indigo, deeper
+         : "#4f8cff";                         // bolus (and any unset kind)
   },
   // Chart.js plugin: shade the in-range target band behind the series.
   targetBand(low, high) {
