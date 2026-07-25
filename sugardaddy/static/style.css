@@ -84,18 +84,19 @@ input, select {
 }
 input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
 
-/* insulin-on-board hint under the glucose tile — informational, not a suggestion */
-.iob-hint {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--in);
+/* insulin-on-board + action-phase tiles under the glucose tile — informational */
+.io-tiles { display: flex; gap: 10px; }
+.io-tile {
+  flex: 1; min-width: 0;
   text-align: center;
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-radius: 10px;
   background: var(--card-2);
   border: 1px solid var(--border);
 }
-.iob-hint.muted { color: var(--muted); font-weight: 400; }
+.io-tile .io-val { font-size: 18px; font-weight: 700; color: var(--in); line-height: 1.15; }
+.io-tile .io-lab { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.io-tile.muted .io-val { color: var(--muted); font-weight: 400; }
 
 /* transient success confirmation for logging a dose/meal */
 .toast {

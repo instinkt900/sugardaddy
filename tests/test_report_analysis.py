@@ -147,6 +147,22 @@ def test_activity_curve_peaks_near_tp_and_zeros_at_ends():
     assert 0.9 < area < 1.1, area
 
 
+def test_activity_phase_rising_peak_falling():
+    dose = [InsulinDose(ts_utc=T0, units=5.0, kind="bolus")]
+    # Well before the ~70min peak: rising, below full intensity.
+    early = iob.activity_phase(dose, T0 + 20 * 60, dia_minutes=300, peak_minutes=70)
+    assert early is not None and early[1] == 1 and 0 < early[0] < 1, early
+    # At the configured peak: ~full intensity.
+    at_peak = iob.activity_phase(dose, T0 + 70 * 60, dia_minutes=300, peak_minutes=70)
+    assert at_peak[0] > 0.95, at_peak
+    # On the tail: falling, reduced intensity.
+    late = iob.activity_phase(dose, T0 + 200 * 60, dia_minutes=300, peak_minutes=70)
+    assert late[1] == -1 and 0 < late[0] < 1, late
+    # Basal-only and empty → no active rapid action.
+    assert iob.activity_phase([InsulinDose(ts_utc=T0, units=30.0, kind="basal")], T0 + 3600, dia_minutes=300, peak_minutes=70) is None
+    assert iob.activity_phase([], T0, dia_minutes=300, peak_minutes=70) is None
+
+
 def test_active_activity_excludes_basal():
     doses = [
         InsulinDose(ts_utc=T0 - 70 * 60, units=5.0, kind="bolus"),

@@ -17,8 +17,15 @@
     {% endif %}
   </header>
 
-  <div id="iob-hint" class="iob-hint{% if not current.iob %} muted{% endif %}">
-    {% if current.iob %}≈ {{ current.iob }} u insulin on board{% if current.iob_dose_count %} · {{ current.iob_dose_count }} recent dose{{ 's' if current.iob_dose_count != 1 }}{% endif %}{% else %}No insulin on board{% endif %}
+  <div class="io-tiles">
+    <div id="iob-tile" class="io-tile{% if not current.iob %} muted{% endif %}">
+      <div class="io-val">{% if current.iob %}≈{{ current.iob }} u{% else %}—{% endif %}</div>
+      <div class="io-lab">{% if current.iob %}on board{% if current.iob_dose_count %} · {{ current.iob_dose_count }} dose{{ 's' if current.iob_dose_count != 1 }}{% endif %}{% else %}no insulin on board{% endif %}</div>
+    </div>
+    <div id="act-tile" class="io-tile{% if current.activity_pct is none %} muted{% endif %}">
+      <div class="io-val">{% if current.activity_pct is not none %}{{ current.activity_pct }}%{% else %}—{% endif %}</div>
+      <div class="io-lab">{% if current.activity_pct is not none %}action {{ current.activity_dir }}{% else %}no action{% endif %}</div>
+    </div>
   </div>
 
   <section class="chart-card">

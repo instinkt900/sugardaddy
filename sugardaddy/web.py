@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 from sugardaddy import __version__
 from sugardaddy.analysis import post_meal_responses, summarize
 from sugardaddy.config import Config, load_config
-from sugardaddy.iob import active_activity, active_iob, is_rapid
+from sugardaddy.iob import active_activity, active_iob, activity_phase, is_rapid
 from sugardaddy.constants import INSULIN_KINDS, MEAL_TYPES, to_display, trend_arrow
 from sugardaddy.db import Database
 from sugardaddy.ingest import start_background
@@ -246,9 +246,16 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             dia_minutes=cfg.insulin.dia_minutes,
             peak_minutes=cfg.insulin.peak_minutes,
         )
+        # "Where on the ride" the aggregate insulin action is, for a compact phone
+        # tile — a % of the batch's peak action rate plus a rising/falling label.
+        phase = activity_phase(
+            recent, now, dia_minutes=cfg.insulin.dia_minutes, peak_minutes=cfg.insulin.peak_minutes
+        )
         ctx = {
             "iob": round(iob, 1),
             "iob_dose_count": sum(1 for d in recent if is_rapid(d)),
+            "activity_pct": round(phase[0] * 100) if phase else None,
+            "activity_dir": {1: "rising", -1: "falling", 0: "peak"}[phase[1]] if phase else None,
         }
 
         r = db.latest_reading()

@@ -86,25 +86,33 @@
         `<div class="current-meta">no glucose reading yet</div>`;
     }
   }
-  // Insulin-on-board hint above the dose input. Descriptive only (Layer 1 of
-  // the insulin-awareness plan): it states active insulin, never a dose to take.
-  function renderIob(c) {
-    const el = document.getElementById("iob-hint");
-    if (!el) return;
+  // Insulin tiles under the glucose reading: on-board amount + action phase.
+  // Descriptive only (Layer 1 of the insulin-awareness plan): they state active
+  // insulin and where its action sits on the curve, never a dose to take.
+  function setTile(id, val, lab, muted) {
+    const tile = document.getElementById(id);
+    if (!tile) return;
+    tile.classList.toggle("muted", muted);
+    tile.querySelector(".io-val").textContent = val;
+    tile.querySelector(".io-lab").textContent = lab;
+  }
+  function renderIo(c) {
     if (c.iob) {
       const n = c.iob_dose_count;
-      const doses = n ? ` · ${n} recent dose${n === 1 ? "" : "s"}` : "";
-      el.textContent = `≈ ${c.iob} u insulin on board${doses}`;
-      el.classList.remove("muted");
+      setTile("iob-tile", `≈${c.iob} u`, n ? `on board · ${n} dose${n === 1 ? "" : "s"}` : "on board", false);
     } else {
-      el.textContent = "No insulin on board";
-      el.classList.add("muted");
+      setTile("iob-tile", "—", "no insulin on board", true);
+    }
+    if (c.activity_pct != null) {
+      setTile("act-tile", `${c.activity_pct}%`, `action ${c.activity_dir}`, false);
+    } else {
+      setTile("act-tile", "—", "no action", true);
     }
   }
   function updateCurrent() {
     return fetch("/api/current")
       .then((r) => r.json())
-      .then((c) => { renderCurrent(c); renderIob(c); })
+      .then((c) => { renderCurrent(c); renderIo(c); })
       .catch(() => {});
   }
 
