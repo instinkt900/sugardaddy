@@ -1,7 +1,10 @@
 # Plan: insulin-on-board & dosing-awareness guidance
 
-**Status:** planning only — nothing here is built. Captured so the direction and
-reasoning aren't lost.
+**Status:** mostly planning. A first slice of **Layer 1** has shipped: a pure
+`iob.py` (exponential curve, rapid-acting only) plus retrospective insulin context
+on the desktop post-meal table — each meal now shows its co-timed **bolus** and the
+**IOB @ start** from earlier doses. Config lives in `[insulin]` (`dia_minutes`,
+`peak_minutes`). The rest below is still direction, captured so it isn't lost.
 
 > **Not a medical device, not dosing advice.** Everything below surfaces
 > *information* the user already implicitly reasons about (trajectory, insulin
@@ -123,11 +126,14 @@ in 13 meals carry carbs).
   trustworthy.
 
 ### Layer 1 — IOB engine + display (deterministic, safe)
-- An `iob` module (mirroring `analysis.py`'s pure-function style): given doses +
-  DIA/tp + a time, return active units and a per-dose breakdown.
-- Show current active insulin on the phone logger and/or desktop
-  ("≈ 3.2 u active, from 2 doses in the last 4 h").
-- **Validate against known events first**: backtest the IOB timeline against the
+- ✅ An `iob` module (mirroring `analysis.py`'s pure-function style): given doses +
+  DIA/tp + a time, return active units. (Per-dose breakdown not yet exposed.)
+- ✅ Retrospective use: the desktop post-meal table shows each meal's co-timed
+  **bolus** and the **IOB @ start** carried in from earlier doses, so a glucose
+  response can be read with its insulin context instead of in isolation.
+- Still to do: show *current* active insulin live on the phone logger / desktop
+  ("≈ 3.2 u active, from 2 doses in the last 4 h") — this is the always-on display.
+- **Validate against known events**: backtest the IOB timeline against the
   midnight low we already found — confirm high stacked IOB lines up with the dip.
 
 ### Layer 2 — dosing-awareness nudge (the priority)

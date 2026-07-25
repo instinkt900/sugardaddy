@@ -36,6 +36,8 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
     readings = db.readings_between(start, now_utc)
     meals = db.meals_between(start, now_utc)
     doses = db.doses_between(start, now_utc)
+    # IOB for a meal near the window start can draw on a dose up to a DIA earlier.
+    pm_doses = db.doses_between(start - cfg.insulin.dia_minutes * 60, now_utc)
 
     low = cfg.target_low_mgdl
     high = cfg.target_high_mgdl
@@ -67,7 +69,14 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
         "low_episodes": analysis.low_episodes(readings, low, units),
         "insulin": analysis.insulin_summary(doses),
         "carb_coverage": analysis.carb_coverage(meals),
-        "post_meal": analysis.post_meal_responses(readings, meals, units),
+        "post_meal": analysis.post_meal_responses(
+            readings,
+            meals,
+            units,
+            pm_doses,
+            dia_minutes=cfg.insulin.dia_minutes,
+            peak_minutes=cfg.insulin.peak_minutes,
+        ),
         "meal_count": len(meals),
         "dose_count": len(doses),
     }
@@ -139,14 +148,17 @@ def _fmt_text(rep: dict, tzinfo) -> str:
     L.append(f"CARB LOGGING — {cc['with_carbs']}/{cc['total']} meals have a carb count ({cc['percent']}%)")
     L.append("")
 
-    L.append("POST-MEAL RESPONSE (start → peak → +2h)")
+    L.append("POST-MEAL RESPONSE (start → peak → +2h; IOB@start excludes the meal bolus)")
     if not rep["post_meal"]:
         L.append("  no meals with a matching glucose window")
     for m in rep["post_meal"]:
         carbs = f"{m['carbs_g']}g" if m["carbs_g"] is not None else "  ?"
+        bolus = f"{m['bolus_units']}u" if m["bolus_units"] else "  ·"
+        iob = f"{m['iob_start_units']}u" if m["iob_start_units"] else "  ·"
         L.append(
             f"  {_local(m['ts_utc'], tzinfo)}  {(m['description'] or '')[:28]:<28}"
-            f"  carbs {carbs:>5}  {m['start_display']} → {m['peak_display']} (+{m['minutes_to_peak']}m) → {m['end_display']}"
+            f"  carbs {carbs:>5}  bolus {bolus:>5}  IOB {iob:>5}"
+            f"  {m['start_display']} → {m['peak_display']} (+{m['minutes_to_peak']}m) → {m['end_display']}"
             f"   Δ{m['peak_delta_display']:+}"
         )
     return "\n".join(L)

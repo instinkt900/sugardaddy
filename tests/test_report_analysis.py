@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sugardaddy import analysis  # noqa: E402
+from sugardaddy import analysis, iob  # noqa: E402
 from sugardaddy.constants import mmol_to_mgdl  # noqa: E402
 from sugardaddy.models import GlucoseReading, InsulinDose, Meal, MealItem  # noqa: E402
 
@@ -117,6 +117,51 @@ def test_post_meal_still_sorted_recent_first():
     ]
     out = analysis.post_meal_responses(readings, meals, UNITS)
     assert [m["description"] for m in out] == ["late", "early"], out
+    # No doses passed -> insulin context defaults to zero, never missing.
+    assert out[0]["bolus_units"] == 0.0 and out[0]["iob_start_units"] == 0.0, out[0]
+
+
+def test_iob_curve_endpoints_and_decay():
+    dia, tp = 300, 75
+    # Full unit on board at the instant of the dose; gone by DIA.
+    assert iob.iob_fraction(0, dia, tp) == 1.0
+    assert iob.iob_fraction(dia, dia, tp) == 0.0
+    assert iob.iob_fraction(dia + 60, dia, tp) == 0.0
+    # Monotonically decaying and bounded within (0, 1) in between.
+    f60 = iob.iob_fraction(60, dia, tp)
+    f180 = iob.iob_fraction(180, dia, tp)
+    assert 0.0 < f180 < f60 < 1.0, (f60, f180)
+
+
+def test_active_iob_excludes_basal_and_expired():
+    # One rapid dose 60 min ago contributes; a basal depot never does; an ancient
+    # rapid dose past DIA has fully decayed.
+    doses = [
+        InsulinDose(ts_utc=T0 - 60 * 60, units=5.0, kind="bolus"),
+        InsulinDose(ts_utc=T0 - 60 * 60, units=36.0, kind="basal"),  # excluded
+        InsulinDose(ts_utc=T0 - 10 * 60 * 60, units=8.0, kind="bolus"),  # expired
+    ]
+    active = iob.active_iob(doses, T0, dia_minutes=300, peak_minutes=75)
+    expected = 5.0 * iob.iob_fraction(60, 300, 75)
+    assert abs(active - expected) < 1e-9, (active, expected)
+
+
+def test_post_meal_insulin_context():
+    readings = [r(i * 300, 8.0) for i in range(0, 30)]  # every 5 min, ~2.5h
+    meal = Meal(ts_utc=T0 + 3600, name="dinner")
+    doses = [
+        # Co-timed with the meal (within the 20-min match window) -> meal bolus.
+        InsulinDose(ts_utc=T0 + 3600 + 300, units=6.0, kind="bolus"),
+        # An hour before the meal -> prior IOB, must NOT count as the bolus.
+        InsulinDose(ts_utc=T0 + 3600 - 3600, units=4.0, kind="bolus"),
+        # A basal an hour before -> neither bolus nor rapid IOB.
+        InsulinDose(ts_utc=T0 + 3600 - 3600, units=36.0, kind="basal"),
+    ]
+    out = analysis.post_meal_responses(readings, [meal], UNITS, doses)
+    row = out[0]
+    assert row["bolus_units"] == 6.0, row
+    prior_iob = 4.0 * iob.iob_fraction(60, iob.DEFAULT_DIA_MINUTES, iob.DEFAULT_PEAK_MINUTES)
+    assert row["iob_start_units"] == round(prior_iob, 1), (row, prior_iob)
 
 
 def _run_all():

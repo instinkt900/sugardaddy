@@ -54,6 +54,14 @@ class WebConfig:
 
 
 @dataclass
+class InsulinConfig:
+    # Rapid-acting activity curve, user/clinician-owned (see docs/plans/
+    # insulin-awareness.md). Used only for retrospective IOB context, never dosing.
+    dia_minutes: int = 300  # Duration of Insulin Action (~4–6 h for rapid analogs)
+    peak_minutes: int = 75  # time to peak activity (~65–75 min aspart/lispro)
+
+
+@dataclass
 class BackfillConfig:
     # Only used by the one-shot `backfill` command to seed history from HA.
     ha_url: str = ""
@@ -66,6 +74,7 @@ class Config:
     librelink: LibreLinkConfig
     database: DatabaseConfig
     web: WebConfig
+    insulin: InsulinConfig = field(default_factory=InsulinConfig)
     backfill: BackfillConfig = field(default_factory=BackfillConfig)
 
     @property
@@ -109,10 +118,13 @@ def load_config(path: str | os.PathLike) -> Config:
 
     database = DatabaseConfig(**_known(raw.get("database", {}), DatabaseConfig))
     web = WebConfig(**_known(raw.get("web", {}), WebConfig))
+    insulin = InsulinConfig(**_known(raw.get("insulin", {}), InsulinConfig))
 
     bf_raw = _known(raw.get("backfill", {}), BackfillConfig)
     bf_raw.pop("token", None)  # never from TOML
     backfill = BackfillConfig(**bf_raw)
     backfill.token = os.environ.get("SUGARDADDY_HA_TOKEN", "").strip()
 
-    return Config(librelink=librelink, database=database, web=web, backfill=backfill)
+    return Config(
+        librelink=librelink, database=database, web=web, insulin=insulin, backfill=backfill
+    )

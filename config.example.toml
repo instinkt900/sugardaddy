@@ -28,6 +28,14 @@ units = "mmol/L"
 target_low = 3.9
 target_high = 10.0
 
+[insulin]
+# Rapid-acting activity curve, used only for RETROSPECTIVE insulin-on-board
+# context (e.g. the "IOB @ start" column on the post-meal table). Never dosing
+# advice. These are yours/your clinician's to set — the defaults are typical for
+# rapid analogs (aspart/NovoRapid/lispro) and just keep the maths usable.
+dia_minutes = 300   # Duration of Insulin Action (~4–6 h)
+peak_minutes = 75   # time to peak activity (~55 min Fiasp; ~65–75 min aspart/lispro)
+
 [backfill]
 # Only used by the one-shot `sugardaddy backfill` command to seed history from an
 # existing Home Assistant install. Unused at runtime; safe to leave blank.

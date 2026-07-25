@@ -355,10 +355,20 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         start, end = range_from_query(request)
         readings = db.readings_between(start, end)
         meals = db.meals_between(start, end)
+        # IOB at a meal can draw on a dose taken up to a DIA before it, so widen
+        # the dose window past the display range's start.
+        doses = db.doses_between(start - cfg.insulin.dia_minutes * 60, end)
         summary = summarize(readings, cfg.target_low_mgdl, cfg.target_high_mgdl, cfg.web.units)
         return {
             "summary": summary.as_dict(),
-            "post_meal": post_meal_responses(readings, meals, cfg.web.units),
+            "post_meal": post_meal_responses(
+                readings,
+                meals,
+                cfg.web.units,
+                doses,
+                dia_minutes=cfg.insulin.dia_minutes,
+                peak_minutes=cfg.insulin.peak_minutes,
+            ),
         }
 
     # --- create (phone HTMX + desktop) ----------------------------------

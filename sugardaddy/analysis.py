@@ -17,9 +17,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, tzinfo
 
 from sugardaddy.constants import mgdl_to_mmol, to_display
+from sugardaddy.iob import DEFAULT_DIA_MINUTES, DEFAULT_PEAK_MINUTES, _is_rapid, active_iob
 from sugardaddy.models import GlucoseReading, InsulinDose, Meal
 
 # A meal's "starting" glucose is the nearest reading within this window (seconds).
+# The same window defines a dose "co-timed" with the meal (its meal bolus).
 _MEAL_MATCH_WINDOW = 20 * 60
 _POST_MEAL_WINDOW = 2 * 60 * 60
 
@@ -81,11 +83,24 @@ def post_meal_responses(
     readings: list[GlucoseReading],
     meals: list[Meal],
     units: str,
+    doses: list[InsulinDose] | None = None,
+    *,
+    dia_minutes: float = DEFAULT_DIA_MINUTES,
+    peak_minutes: float = DEFAULT_PEAK_MINUTES,
 ) -> list[dict]:
-    """For each meal, the glucose at meal time and the peak/end over the next 2h."""
+    """For each meal, the glucose at meal time and the peak/end over the next 2h,
+    plus insulin context so the response is readable: the rapid-acting dose
+    co-timed with the meal (``bolus_units``) and the active insulin already
+    working from *earlier* doses when the meal started (``iob_start_units``).
+
+    The two are disjoint by construction — ``iob_start_units`` counts only doses
+    before the co-timed window, so it excludes the meal's own bolus (a +4 spike
+    with 8 u on board reads very differently from one with none, and a flat
+    response may just be an earlier dose still coming down)."""
     if not readings:
         return []
     ordered = sorted(readings, key=lambda r: r.ts_utc)
+    doses = doses or []
     out: list[dict] = []
 
     for meal in meals:
@@ -95,6 +110,18 @@ def post_meal_responses(
             continue
         peak = max(window, key=lambda r: r.value_mgdl)
         end = window[-1]
+        # Meal bolus = rapid-acting doses co-timed with the meal (± match window).
+        bolus_units = sum(
+            d.units
+            for d in doses
+            if _is_rapid(d) and abs(d.ts_utc - meal.ts_utc) <= _MEAL_MATCH_WINDOW
+        )
+        # IOB at start = insulin from strictly-earlier doses still active now,
+        # i.e. the depot excluding this meal's own (co-timed) bolus.
+        prior = [d for d in doses if d.ts_utc < meal.ts_utc - _MEAL_MATCH_WINDOW]
+        iob_start = active_iob(
+            prior, meal.ts_utc, dia_minutes=dia_minutes, peak_minutes=peak_minutes
+        )
         out.append(
             {
                 "meal_id": meal.id,
@@ -106,6 +133,8 @@ def post_meal_responses(
                 "peak_delta_display": _delta_display(peak.value_mgdl - start.value_mgdl, units),
                 "end_display": to_display(end.value_mgdl, units),
                 "minutes_to_peak": round((peak.ts_utc - meal.ts_utc) / 60),
+                "bolus_units": round(bolus_units, 1),
+                "iob_start_units": round(iob_start, 1),
             }
         )
     out.sort(key=lambda d: d["ts_utc"], reverse=True)  # most recent meal first

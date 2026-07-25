@@ -215,8 +215,11 @@
     tb.innerHTML = "";
     (s.post_meal || []).forEach((p) => {
       const tr = document.createElement("tr");
+      // faint "·" placeholder where there was no bolus / no active IOB
+      const dose = (u) => (u ? `${u}u` : `<span class="muted">·</span>`);
       tr.innerHTML = `<td>${SD.stamp(p.ts_utc * 1000)}</td><td>${esc(p.description) || "(meal)"}</td>
-        <td>${p.carbs_g ?? ""}</td><td>${p.start_display}</td><td>${p.peak_display}</td>
+        <td>${p.carbs_g ?? ""}</td><td>${dose(p.bolus_units)}</td><td>${dose(p.iob_start_units)}</td>
+        <td>${p.start_display}</td><td>${p.peak_display}</td>
         <td>${p.peak_delta_display}</td><td>${p.minutes_to_peak}m</td><td>${p.end_display}</td>`;
       tb.appendChild(tr);
     });
