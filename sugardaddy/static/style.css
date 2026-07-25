@@ -35,7 +35,7 @@ a { color: var(--accent); text-decoration: none; }
   padding: 16px 16px 48px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .current {
@@ -48,8 +48,8 @@ a { color: var(--accent); text-decoration: none; }
 .current.in-range { border-color: var(--in); }
 .current.is-low { border-color: var(--low); }
 .current.is-high { border-color: var(--high); }
-.current-value { font-size: 56px; font-weight: 700; line-height: 1; }
-.current-value .trend { font-size: 28px; margin-left: 8px; color: var(--muted); }
+.current-value { font-size: 62px; font-weight: 700; line-height: 1; }
+.current-value .trend { font-size: 30px; margin-left: 8px; color: var(--muted); }
 .current-meta { margin-top: 8px; color: var(--muted); font-size: 14px; }
 
 .chart-card {
