@@ -166,7 +166,7 @@
     const doseY = yMin;
     const mealY = yMin + (yMax - yMin) * 0.06;
 
-    const doses = data.doses.map((d) => ({ x: d.t, y: doseY, label: `${d.units}u ${d.kind}` }));
+    const doses = data.doses.map((d) => ({ x: d.t, y: doseY, kind: d.kind, label: `${d.units}u ${d.kind}` }));
     const meals = data.meals.map((m) => ({
       x: m.t, y: mealY,
       label: m.label + (m.total_carbs != null ? ` (${m.total_carbs}g)` : ""),
@@ -178,8 +178,10 @@
         datasets: [
           { type: "line", label: "Glucose", data: g, borderColor: "#4f8cff",
             borderWidth: 2, pointRadius: 0, tension: 0.3, parsing: false },
-          { type: "scatter", label: "Insulin", data: doses, borderColor: "#4f8cff",
-            backgroundColor: "#4f8cff", pointStyle: "triangle", radius: 7, parsing: false },
+          { type: "scatter", label: "Insulin", data: doses,
+            borderColor: (c) => SD.doseColor(c.raw && c.raw.kind),
+            backgroundColor: (c) => SD.doseColor(c.raw && c.raw.kind),
+            pointStyle: "triangle", radius: 7, parsing: false },
           { type: "scatter", label: "Meal", data: meals, borderColor: "#ffb020",
             backgroundColor: "#ffb020", pointStyle: "rectRot", radius: 7, parsing: false },
           // Active-insulin (IOB) curve on its own right-hand axis; drawn behind

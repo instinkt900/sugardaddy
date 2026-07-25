@@ -123,22 +123,41 @@
     fetch("/api/timeline")
       .then((r) => r.json())
       .then((data) => {
-        const pts = data.glucose.map((p) => ({ x: p.t, y: p.v }));
+        const g = data.glucose.map((p) => ({ x: p.t, y: p.v }));
+        // Sit the dose/meal markers along the low end of the glucose range.
+        const ys = g.map((p) => p.y);
+        const yMin = ys.length ? Math.min(...ys) : 0;
+        const yMax = ys.length ? Math.max(...ys) : 10;
+        const doses = data.doses.map((d) => ({ x: d.t, y: yMin, kind: d.kind, label: `${d.units}u ${d.kind}` }));
+        const meals = data.meals.map((m) => ({
+          x: m.t, y: yMin + (yMax - yMin) * 0.06,
+          label: m.label + (m.total_carbs != null ? ` (${m.total_carbs}g)` : ""),
+        }));
         if (miniChart) {
-          miniChart.data.datasets[0].data = pts;
+          miniChart.data.datasets[0].data = g;
+          miniChart.data.datasets[1].data = doses;
+          miniChart.data.datasets[2].data = meals;
           miniChart.update("none");
           return;
         }
         miniChart = new Chart(ctx, {
-          type: "line",
-          data: { datasets: [{
-            data: pts, borderColor: "#4f8cff", borderWidth: 2,
-            pointRadius: 0, tension: 0.3, fill: false,
-          }]},
+          data: { datasets: [
+            { type: "line", data: g, borderColor: "#4f8cff", borderWidth: 2,
+              pointRadius: 0, tension: 0.3, fill: false, parsing: false },
+            { type: "scatter", label: "Insulin", data: doses,
+              borderColor: (c) => SD.doseColor(c.raw && c.raw.kind),
+              backgroundColor: (c) => SD.doseColor(c.raw && c.raw.kind),
+              pointStyle: "triangle", radius: 5, parsing: false },
+            { type: "scatter", label: "Meal", data: meals, borderColor: "#ffb020",
+              backgroundColor: "#ffb020", pointStyle: "rectRot", radius: 5, parsing: false },
+          ]},
           options: {
             animation: false,
             parsing: false,
-            plugins: { legend: { display: false } },
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (c) => c.raw.label || `${c.parsed.y} ${data.units}` } },
+            },
             scales: {
               x: { type: "linear", ticks: { color: "#8b90a0", maxTicksLimit: 6,
                      callback: (v) => SD.hhmm(v) }, grid: { display: false } },
