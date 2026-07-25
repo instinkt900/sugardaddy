@@ -133,6 +133,30 @@ def test_iob_curve_endpoints_and_decay():
     assert 0.0 < f180 < f60 < 1.0, (f60, f180)
 
 
+def test_activity_curve_peaks_near_tp_and_zeros_at_ends():
+    dia, tp = 300, 70
+    assert iob.activity_fraction(0, dia, tp) == 0.0
+    assert iob.activity_fraction(dia, dia, tp) == 0.0
+    # The action rate should be maximal near the configured time-to-peak.
+    grid = {m: iob.activity_fraction(m, dia, tp) for m in range(5, dia, 5)}
+    peak_m = max(grid, key=grid.get)
+    assert abs(peak_m - tp) <= 15, (peak_m, tp)
+    # Activity integrated over the whole window should recover ~one unit of IOB
+    # decay (area under the rate curve ≈ 1 per unit). Coarse check.
+    area = sum(iob.activity_fraction(m, dia, tp) for m in range(0, dia)) * 1  # 1-min steps
+    assert 0.9 < area < 1.1, area
+
+
+def test_active_activity_excludes_basal():
+    doses = [
+        InsulinDose(ts_utc=T0 - 70 * 60, units=5.0, kind="bolus"),
+        InsulinDose(ts_utc=T0 - 70 * 60, units=36.0, kind="basal"),  # excluded
+    ]
+    rate = iob.active_activity(doses, T0, dia_minutes=300, peak_minutes=70)
+    expected = 5.0 * iob.activity_fraction(70, 300, 70)
+    assert abs(rate - expected) < 1e-9, (rate, expected)
+
+
 def test_active_iob_excludes_basal_and_expired():
     # One rapid dose 60 min ago contributes; a basal depot never does; an ancient
     # rapid dose past DIA has fully decayed.

@@ -54,6 +54,39 @@ def iob_fraction(minutes: float, dia_minutes: float, peak_minutes: float) -> flo
     )
 
 
+def activity_fraction(minutes: float, dia_minutes: float, peak_minutes: float) -> float:
+    """Fraction of one unit *acting per minute* at ``minutes`` after the dose — the
+    rate of insulin action, i.e. the (negative) derivative of the IOB curve. A bell
+    that peaks near ``peak_minutes``; this is what pushes glucose down at time t,
+    where iob_fraction is only how much remains on board. Clamped outside [0, DIA]."""
+    if minutes <= 0 or minutes >= dia_minutes:
+        return 0.0
+
+    td = float(dia_minutes)
+    tp = float(peak_minutes)
+    t = float(minutes)
+
+    tau = tp * (1 - tp / td) / (1 - 2 * tp / td)
+    a = 2 * tau / td
+    s = 1 / (1 - a + (1 + a) * math.exp(-td / tau))
+
+    return (s / (tau * tau)) * t * (1 - t / td) * math.exp(-t / tau)
+
+
+def _sum_over_active(doses, at_ts, dia_minutes, peak_minutes, frac):
+    """Σ dose_units × frac(elapsed) over rapid-acting doses at/or before ``at_ts``
+    within the action window. ``frac`` is iob_fraction or activity_fraction."""
+    total = 0.0
+    for d in doses:
+        if not is_rapid(d):
+            continue
+        minutes = (at_ts - d.ts_utc) / 60
+        if minutes < 0 or minutes >= dia_minutes:
+            continue
+        total += d.units * frac(minutes, dia_minutes, peak_minutes)
+    return total
+
+
 def active_iob(
     doses: list[InsulinDose],
     at_ts: int,
@@ -63,12 +96,16 @@ def active_iob(
 ) -> float:
     """Active rapid-acting units at ``at_ts`` = Σ units × iob_fraction(elapsed).
     Only doses at or before ``at_ts`` and within the action window contribute."""
-    total = 0.0
-    for d in doses:
-        if not is_rapid(d):
-            continue
-        minutes = (at_ts - d.ts_utc) / 60
-        if minutes < 0 or minutes >= dia_minutes:
-            continue
-        total += d.units * iob_fraction(minutes, dia_minutes, peak_minutes)
-    return total
+    return _sum_over_active(doses, at_ts, dia_minutes, peak_minutes, iob_fraction)
+
+
+def active_activity(
+    doses: list[InsulinDose],
+    at_ts: int,
+    *,
+    dia_minutes: float = DEFAULT_DIA_MINUTES,
+    peak_minutes: float = DEFAULT_PEAK_MINUTES,
+) -> float:
+    """Aggregate rapid-acting insulin action rate at ``at_ts``, in units-per-minute
+    (Σ units × activity_fraction). Multiply by 60 for units-per-hour."""
+    return _sum_over_active(doses, at_ts, dia_minutes, peak_minutes, activity_fraction)

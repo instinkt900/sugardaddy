@@ -159,6 +159,7 @@
     if (typeof Chart === "undefined") return;
     const g = data.glucose.map((p) => ({ x: p.t, y: p.v }));
     const iob = (data.iob || []).map((p) => ({ x: p.t, y: p.v }));
+    const activity = (data.activity || []).map((p) => ({ x: p.t, y: p.v }));
     const ys = g.map((p) => p.y);
     const yMin = ys.length ? Math.min(...ys) : 0;
     const yMax = ys.length ? Math.max(...ys) : 10;
@@ -186,6 +187,12 @@
           { type: "line", label: "Insulin active (u)", data: iob, yAxisID: "y1",
             borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.15)",
             borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, parsing: false, order: 1 },
+          // Insulin action *rate* (derivative of IOB) on a hidden auto-scaled
+          // axis — dashed line, no fill, so it reads as the "how hard it's working
+          // now" companion to the filled on-board area. Shape/timing is the point.
+          { type: "line", label: "Insulin activity (u/hr)", data: activity, yAxisID: "y2",
+            borderColor: "#2dd4bf", borderWidth: 1.5, borderDash: [5, 4],
+            pointRadius: 0, tension: 0.3, fill: false, parsing: false, order: 1 },
         ],
       },
       options: {
@@ -193,9 +200,12 @@
         interaction: { mode: "nearest", intersect: true },
         plugins: {
           legend: { labels: { color: "#e8eaf0" } },
-          tooltip: { callbacks: { label: (c) =>
-            c.raw.label ||
-            (c.dataset.yAxisID === "y1" ? `${c.parsed.y} u active` : `${c.parsed.y} ${data.units}`) } },
+          tooltip: { callbacks: { label: (c) => {
+            if (c.raw.label) return c.raw.label;
+            if (c.dataset.yAxisID === "y1") return `${c.parsed.y} u active`;
+            if (c.dataset.yAxisID === "y2") return `${c.parsed.y} u/hr acting`;
+            return `${c.parsed.y} ${data.units}`;
+          } } },
         },
         scales: {
           x: { type: "linear", ticks: { color: "#8b90a0", maxTicksLimit: 10, callback: (v) => SD.stamp(v) },
@@ -205,6 +215,8 @@
           y1: { position: "right", beginAtZero: true, ticks: { color: "#8b90a0" },
                 grid: { display: false },
                 title: { display: true, text: "insulin (u)", color: "#8b90a0" } },
+          // hidden: auto-scales the activity curve for shape comparison only
+          y2: { position: "right", beginAtZero: true, display: false },
         },
       },
       plugins: [SD.targetBand(data.target_low, data.target_high), lastValueTag, crosshair],

@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 from sugardaddy import __version__
 from sugardaddy.analysis import post_meal_responses, summarize
 from sugardaddy.config import Config, load_config
-from sugardaddy.iob import active_iob, is_rapid
+from sugardaddy.iob import active_activity, active_iob, is_rapid
 from sugardaddy.constants import INSULIN_KINDS, MEAL_TYPES, to_display, trend_arrow
 from sugardaddy.db import Database
 from sugardaddy.ingest import start_background
@@ -355,19 +355,17 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         # value is correct at the left edge; cap the grid at ~500 points so long
         # ranges stay light. Shares iob.active_iob with the rest of the app.
         dia = cfg.insulin.dia_minutes
+        peak = cfg.insulin.peak_minutes
         iob_doses = db.doses_between(start - dia * 60, end)
         step = max(300, (end - start) // 500)
         iob = []
+        activity = []  # rate of insulin action (u/hr), the derivative of IOB
         t = start
         while t <= end:
-            iob.append(
-                {
-                    "t": t * 1000,
-                    "v": round(
-                        active_iob(iob_doses, t, dia_minutes=dia, peak_minutes=cfg.insulin.peak_minutes),
-                        2,
-                    ),
-                }
+            ms = t * 1000
+            iob.append({"t": ms, "v": round(active_iob(iob_doses, t, dia_minutes=dia, peak_minutes=peak), 2)})
+            activity.append(
+                {"t": ms, "v": round(active_activity(iob_doses, t, dia_minutes=dia, peak_minutes=peak) * 60, 3)}
             )
             t += step
         return {
@@ -381,6 +379,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "doses": [dose_json(d) for d in db.doses_between(start, end)],
             "meals": [meal_json(m) for m in db.meals_between(start, end)],
             "iob": iob,
+            "activity": activity,
         }
 
     @app.get("/api/entries")
