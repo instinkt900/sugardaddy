@@ -137,6 +137,9 @@
           miniChart.data.datasets[0].data = g;
           miniChart.data.datasets[1].data = doses;
           miniChart.data.datasets[2].data = meals;
+          // The window slides forward with every refresh, so re-pin it too.
+          miniChart.options.scales.x.min = data.from;
+          miniChart.options.scales.x.max = data.to;
           miniChart.update("none");
           return;
         }
@@ -159,7 +162,9 @@
               tooltip: { callbacks: { label: (c) => c.raw.label || `${c.parsed.y} ${data.units}` } },
             },
             scales: {
-              x: { type: "linear", ticks: { color: "#8b90a0", maxTicksLimit: 6,
+              // Pinned to the window the API resolved — see desktop.js.
+              x: { type: "linear", min: data.from, max: data.to,
+                   ticks: { color: "#8b90a0", maxTicksLimit: 6,
                      callback: (v) => SD.hhmm(v) }, grid: { display: false } },
               y: { ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
                    suggestedMin: 0, title: { display: true, text: data.units, color: "#8b90a0" } },

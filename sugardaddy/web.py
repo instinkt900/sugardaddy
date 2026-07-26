@@ -375,10 +375,18 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
                 {"t": ms, "v": round(active_activity(iob_doses, t, dia_minutes=dia, peak_minutes=peak) * 60, 3)}
             )
             t += step
+            # The stride rarely divides the window evenly; land a final sample on
+            # `end` so the curves reach the right edge instead of stopping short.
+            if t > end and t - step < end:
+                t = end
         return {
             "units": cfg.web.units,
             "target_low": cfg.web.target_low,
             "target_high": cfg.web.target_high,
+            # The resolved window, so charts can pin their x axis to it rather
+            # than letting it drift with whatever data happens to exist.
+            "from": start * 1000,
+            "to": end * 1000,
             "glucose": [
                 {"t": r.ts_utc * 1000, "v": to_display(r.value_mgdl, cfg.web.units)}
                 for r in readings

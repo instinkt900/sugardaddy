@@ -210,7 +210,11 @@
           } } },
         },
         scales: {
-          x: { type: "linear", ticks: { color: "#8b90a0", maxTicksLimit: 10, callback: (v) => SD.stamp(v) },
+          // Pinned to the requested window: left to itself the axis would
+          // autoscale to the data, so a stale last reading or an ingest gap made
+          // the plotted lines shrink away from the (fixed) chart area edges.
+          x: { type: "linear", min: data.from, max: data.to,
+               ticks: { color: "#8b90a0", maxTicksLimit: 10, callback: (v) => SD.stamp(v) },
                grid: { color: "#2c303c" } },
           y: { ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
                title: { display: true, text: data.units, color: "#8b90a0" } },
