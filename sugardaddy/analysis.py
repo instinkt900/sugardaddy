@@ -16,6 +16,7 @@ import statistics
 from dataclasses import dataclass
 from datetime import datetime, timezone, tzinfo
 
+from sugardaddy.bolus import bolus_reference, describe
 from sugardaddy.constants import mgdl_to_mmol, to_display
 from sugardaddy.iob import DEFAULT_DIA_MINUTES, DEFAULT_PEAK_MINUTES, active_iob, is_rapid
 from sugardaddy.models import GlucoseReading, InsulinDose, Meal
@@ -87,6 +88,9 @@ def post_meal_responses(
     *,
     dia_minutes: float = DEFAULT_DIA_MINUTES,
     peak_minutes: float = DEFAULT_PEAK_MINUTES,
+    isf_mgdl: float | None = None,
+    icr: float | None = None,
+    target_mgdl: float | None = None,
 ) -> list[dict]:
     """For each meal, the glucose at meal time and the peak/end over the next 2h,
     plus insulin context so the response is readable: the rapid-acting dose
@@ -96,7 +100,12 @@ def post_meal_responses(
     The two are disjoint by construction — ``iob_start_units`` counts only doses
     before the co-timed window, so it excludes the meal's own bolus (a +4 spike
     with 8 u on board reads very differently from one with none, and a flat
-    response may just be an earlier dose still coming down)."""
+    response may just be an earlier dose still coming down).
+
+    When ``isf_mgdl``/``icr``/``target_mgdl`` are supplied, each row also carries
+    the EXPERIMENTAL bolus reference for that meal (``ref_*``) so the dose that
+    was actually given can be read beside a calculated one. Unset → the fields are
+    absent entirely and nothing about this function changes."""
     if not readings:
         return []
     ordered = sorted(readings, key=lambda r: r.ts_utc)
@@ -122,21 +131,37 @@ def post_meal_responses(
         iob_start = active_iob(
             prior, meal.ts_utc, dia_minutes=dia_minutes, peak_minutes=peak_minutes
         )
-        out.append(
-            {
-                "meal_id": meal.id,
-                "ts_utc": meal.ts_utc,
-                "description": meal.label,
-                "carbs_g": meal.total_carbs,
-                "start_display": to_display(start.value_mgdl, units),
-                "peak_display": to_display(peak.value_mgdl, units),
-                "peak_delta_display": _delta_display(peak.value_mgdl - start.value_mgdl, units),
-                "end_display": to_display(end.value_mgdl, units),
-                "minutes_to_peak": round((peak.ts_utc - meal.ts_utc) / 60),
-                "bolus_units": round(bolus_units, 1),
-                "iob_start_units": round(iob_start, 1),
-            }
-        )
+        row = {
+            "meal_id": meal.id,
+            "ts_utc": meal.ts_utc,
+            "description": meal.label,
+            "carbs_g": meal.total_carbs,
+            "start_display": to_display(start.value_mgdl, units),
+            "peak_display": to_display(peak.value_mgdl, units),
+            "peak_delta_display": _delta_display(peak.value_mgdl - start.value_mgdl, units),
+            "end_display": to_display(end.value_mgdl, units),
+            "minutes_to_peak": round((peak.ts_utc - meal.ts_utc) / 60),
+            "bolus_units": round(bolus_units, 1),
+            "iob_start_units": round(iob_start, 1),
+        }
+        # Gate on ISF alone, matching bolus_backtest and the config docs: one
+        # switch turns the experimental reference on everywhere or nowhere.
+        if isf_mgdl is not None:
+            ref = bolus_reference(
+                bg_mgdl=start.value_mgdl,
+                target_mgdl=target_mgdl,
+                isf_mgdl_per_unit=isf_mgdl,
+                icr_g_per_unit=icr,
+                carbs_g=meal.total_carbs,
+                iob_units=iob_start,
+            )
+            row["ref"] = ref.as_dict()
+            row["ref_note"] = describe(ref)
+            # Signed gap: positive means the user gave MORE than the reference.
+            row["ref_delta_units"] = (
+                None if not ref.available else round(bolus_units - ref.suggested_units, 1)
+            )
+        out.append(row)
     out.sort(key=lambda d: d["ts_utc"], reverse=True)  # most recent meal first
     return out
 
@@ -312,6 +337,115 @@ def carb_coverage(meals: list[Meal]) -> dict:
         "total": total,
         "with_carbs": with_carbs,
         "percent": round(100 * with_carbs / total, 1) if total else 0.0,
+    }
+
+
+def bolus_backtest(
+    readings: list[GlucoseReading],
+    doses: list[InsulinDose],
+    meals: list[Meal],
+    units: str,
+    *,
+    isf_mgdl: float | None = None,
+    icr: float | None = None,
+    target_mgdl: float | None = None,
+    dia_minutes: float = DEFAULT_DIA_MINUTES,
+    peak_minutes: float = DEFAULT_PEAK_MINUTES,
+    history_doses: list[InsulinDose] | None = None,
+) -> dict:
+    """EXPERIMENTAL: replay each rapid-acting dose against the calculated reference.
+
+    For every bolus/correction actually given, reconstruct what the formula would
+    have said *at that moment* — glucose then, carbs from any co-timed meal, and
+    the IOB carried in from strictly earlier doses — and report the gap. The
+    output is the "how well does it match what I decided?" view: it grades the
+    **calculator** against the user's judgement, not the other way round.
+
+    Gated on a configured ISF: with none, this returns ``available: False`` and a
+    reason rather than a number. The agreement stats are split by whether carbs
+    were logged, because a dose whose carb half is missing is not a fair test of
+    the formula — it is a test of the logging.
+
+    ``doses`` are the ones scored; pass ``history_doses`` (reaching a DIA further
+    back) so a dose near the window start still sees the IOB carried into it."""
+    if isf_mgdl is None:
+        return {"available": False, "reason": "no ISF configured", "events": [], "agreement": None}
+
+    ordered = sorted(readings, key=lambda r: r.ts_utc)
+    rapid = sorted((d for d in doses if is_rapid(d)), key=lambda d: d.ts_utc)
+    history = history_doses if history_doses is not None else doses
+    events = []
+
+    for dose in rapid:
+        bg = _nearest(ordered, dose.ts_utc, _MEAL_MATCH_WINDOW)
+        # Carbs credited to this dose: any co-timed meal (same window that pairs a
+        # meal with its bolus elsewhere). No meal at all → a pure correction, which
+        # is carbs=0 rather than "unknown"; a meal logged *without* carbs is the
+        # genuinely unknown case and blocks the carb half.
+        near = [m for m in meals if abs(m.ts_utc - dose.ts_utc) <= _MEAL_MATCH_WINDOW]
+        if not near:
+            carbs, carbs_known = 0.0, True
+        else:
+            vals = [m.total_carbs for m in near if m.total_carbs is not None]
+            carbs_known = len(vals) == len(near)
+            carbs = sum(vals) if carbs_known else None
+
+        prior = [d for d in history if d.ts_utc < dose.ts_utc]
+        iob = active_iob(prior, dose.ts_utc, dia_minutes=dia_minutes, peak_minutes=peak_minutes)
+        ref = bolus_reference(
+            bg_mgdl=None if bg is None else bg.value_mgdl,
+            target_mgdl=target_mgdl,
+            isf_mgdl_per_unit=isf_mgdl,
+            icr_g_per_unit=icr,
+            carbs_g=carbs,
+            iob_units=iob,
+        )
+        events.append(
+            {
+                "ts_utc": dose.ts_utc,
+                "kind": dose.kind or "bolus",
+                "actual_units": dose.units,
+                "glucose_display": None if bg is None else to_display(bg.value_mgdl, units),
+                "carbs_g": carbs,
+                "carbs_known": carbs_known,
+                "iob_units": round(iob, 2),
+                "ref": ref.as_dict(),
+                "ref_note": describe(ref),
+                # Positive = the user gave more than the reference.
+                "delta_units": (
+                    None if not ref.available else round(dose.units - ref.suggested_units, 1)
+                ),
+            }
+        )
+
+    events.sort(key=lambda e: e["ts_utc"], reverse=True)
+    return {
+        "available": True,
+        "reason": "",
+        "events": events,
+        "agreement": _agreement(events),
+    }
+
+
+def _agreement(events: list[dict]) -> dict:
+    """How closely the reference tracked the doses actually given. ``full_inputs``
+    counts only events where every input was present — the honest denominator, and
+    usually far smaller than the event count while carb logging is patchy."""
+    scored = [e for e in events if e["delta_units"] is not None]
+    full = [e for e in scored if e["carbs_known"] and not e["ref"]["missing"]]
+    base = full or scored
+    if not base:
+        return {"n": 0, "n_full_inputs": 0, "mean_abs_delta": None,
+                "mean_signed_delta": None, "within_1u_percent": None}
+    deltas = [e["delta_units"] for e in base]
+    return {
+        "n": len(base),
+        "n_full_inputs": len(full),
+        "mean_abs_delta": round(sum(abs(d) for d in deltas) / len(deltas), 2),
+        # Signed mean shows systematic bias: negative = the formula asks for more
+        # than the user gives, which usually means ISF/ICR need revisiting.
+        "mean_signed_delta": round(sum(deltas) / len(deltas), 2),
+        "within_1u_percent": round(100 * sum(1 for d in deltas if abs(d) <= 1) / len(deltas), 1),
     }
 
 

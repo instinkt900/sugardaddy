@@ -168,6 +168,23 @@ Design rules:
 - Once carb coverage is high enough, do the same for ICR from meal boluses.
 
 ### Layer 4 — bolus calculator / calculated reference (stretch goal, experimental)
+**Status: a retrospective slice has shipped.** `bolus.py` holds the pure formula
+(carbs/ICR + (BG−target)/ISF − IOB) returning *components*, never a bare number;
+`analysis.bolus_backtest` replays it against every rapid dose actually given.
+Surfaces in two retrospective places only — a `report` section and a `Ref`/`Δ Ref`
+column on the desktop post-meal table. **Deliberately absent from the phone
+logging flow**, per the gate below: this answers "how well would it have matched
+what I decided?", not "what should I take?".
+
+Gated on `[insulin].isf` being set; unset means the columns and the report
+section do not exist at all. `isf`/`icr`/`target_bg` are config-only and never
+inferred. Partial figures (e.g. carbs never logged) are marked `*` and excluded
+from the agreement stats, so an incomplete "0.0u" can't read as "give nothing".
+
+Still open: the awareness nudge (Layer 2) remains the more useful daily feature,
+and the agreement numbers stay meaningless until ISF/ICR are real and the history
+is longer than a handful of days.
+
 A genuine build goal, not a throwaway — pursued for academic interest and the fun
 of tuning it, and doubling as the richer anchor from the motivation. It is **not**
 a dosing directive: the user is confident with their own ranges and wants the

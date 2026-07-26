@@ -242,12 +242,28 @@
 
     const tb = document.querySelector("#postmeal-table tbody");
     tb.innerHTML = "";
+    // The experimental bolus reference is opt-in: it only exists once an ISF is
+    // configured, so show its columns (and the caveat) only when data carries it.
+    const showRef = (s.post_meal || []).some((p) => p.ref);
+    document.getElementById("postmeal-table").classList.toggle("show-ref", showRef);
+    const note = document.getElementById("ref-caveat");
+    if (note) note.hidden = !showRef;
     (s.post_meal || []).forEach((p) => {
       const tr = document.createElement("tr");
       // faint "·" placeholder where there was no bolus / no active IOB
       const dose = (u) => (u ? `${u}u` : `<span class="muted">·</span>`);
+      // Experimental reference columns. Always emitted so header and body stay in
+      // step; CSS hides them unless the table carries .show-ref. The title holds
+      // the component breakdown, so a gap against the dose given is diagnosable.
+      const r = p.ref || {};
+      const ref = r.suggested_units == null
+        ? `<td class="ref-col muted" title="missing: ${esc((r.missing || []).join(", "))}">—</td>
+           <td class="ref-col"></td>`
+        : `<td class="ref-col" title="${esc(p.ref_note || "")}">${r.suggested_units}u</td>
+           <td class="ref-col ${p.ref_delta_units > 0 ? "ref-over" : p.ref_delta_units < 0 ? "ref-under" : ""}">
+             ${p.ref_delta_units > 0 ? "+" : ""}${p.ref_delta_units}</td>`;
       tr.innerHTML = `<td>${SD.stamp(p.ts_utc * 1000)}</td><td>${esc(p.description) || "(meal)"}</td>
-        <td>${p.carbs_g ?? ""}</td><td>${dose(p.bolus_units)}</td><td>${dose(p.iob_start_units)}</td>
+        <td>${p.carbs_g ?? ""}</td><td>${dose(p.bolus_units)}</td><td>${dose(p.iob_start_units)}</td>${ref}
         <td>${p.start_display}</td><td>${p.peak_display}</td>
         <td>${p.peak_delta_display}</td><td>${p.minutes_to_peak}m</td><td>${p.end_display}</td>`;
       tb.appendChild(tr);

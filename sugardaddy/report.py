@@ -76,6 +76,23 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
             pm_doses,
             dia_minutes=cfg.insulin.dia_minutes,
             peak_minutes=cfg.insulin.peak_minutes,
+            isf_mgdl=cfg.isf_mgdl,
+            icr=cfg.insulin.icr,
+            target_mgdl=cfg.bolus_target_mgdl,
+        ),
+        # Experimental, and off unless [insulin].isf is configured — see
+        # docs/plans/insulin-awareness.md Layer 4.
+        "bolus_backtest": analysis.bolus_backtest(
+            readings,
+            doses,
+            meals,
+            units,
+            isf_mgdl=cfg.isf_mgdl,
+            icr=cfg.insulin.icr,
+            target_mgdl=cfg.bolus_target_mgdl,
+            dia_minutes=cfg.insulin.dia_minutes,
+            peak_minutes=cfg.insulin.peak_minutes,
+            history_doses=pm_doses,
         ),
         "meal_count": len(meals),
         "dose_count": len(doses),
@@ -161,7 +178,59 @@ def _fmt_text(rep: dict, tzinfo) -> str:
             f"  {m['start_display']} → {m['peak_display']} (+{m['minutes_to_peak']}m) → {m['end_display']}"
             f"   Δ{m['peak_delta_display']:+}"
         )
+
+    bt = rep.get("bolus_backtest") or {}
+    if bt.get("available"):
+        L.append("")
+        L.extend(_fmt_backtest(bt, tzinfo))
     return "\n".join(L)
+
+
+def _fmt_backtest(bt: dict, tzinfo) -> list[str]:
+    """The experimental bolus reference, framed the way the plan doc requires:
+    the calculator is what's on trial here, and its components are shown so a
+    disagreement with the user's own dose is diagnosable rather than mysterious."""
+    L = ["BOLUS REFERENCE — EXPERIMENTAL, not dosing advice"]
+    L.append("  A calculated figure to compare against what you actually decided.")
+    L.append("  Δ is (your dose − reference): + means you gave more than the formula.")
+    a = bt["agreement"]
+    if not a or not a["n"]:
+        L.append("  not enough scoreable doses yet")
+        return L
+
+    L.append(
+        f"  agreement     n={a['n']}"
+        + (f" ({a['n_full_inputs']} with every input logged)" if a["n_full_inputs"] else "")
+        + f"   mean |Δ| {a['mean_abs_delta']} u   bias {a['mean_signed_delta']:+} u"
+        f"   within 1 u {a['within_1u_percent']}%"
+    )
+    if a["n"] < 10:
+        L.append("  ⚠ too few doses to read anything into these numbers yet")
+    L.append("")
+    incomplete = False
+    for e in bt["events"]:
+        ref = e["ref"]
+        # A partial reference (e.g. carbs never logged) is NOT a recommendation of
+        # that amount — mark it so a bare "0.0u" can't be read as "give nothing".
+        partial = bool(ref["missing"])
+        incomplete = incomplete or partial
+        got = "—" if ref["suggested_units"] is None else f"{ref['suggested_units']}u" + ("*" if partial else "")
+        delta = "  —" if e["delta_units"] is None else f"{e['delta_units']:+}" + ("*" if partial else "")
+        bg = e["glucose_display"] if e["glucose_display"] is not None else "?"
+        carbs = "  ?" if e["carbs_g"] is None else f"{e['carbs_g']:g}g"
+        L.append(
+            f"  {_local(e['ts_utc'], tzinfo)}  {e['kind']:<11}"
+            f"  gave {e['actual_units']:g}u  ref {got:>6}  Δ{delta:>6}"
+            f"   (bg {bg}, carbs {carbs})"
+        )
+        if e["ref_note"]:
+            L.append(f"        {e['ref_note']}")
+        if partial:
+            L.append(f"        incomplete — no {', '.join(sorted(set(ref['missing'])))} for this dose")
+    if incomplete:
+        L.append("")
+        L.append("  * incomplete inputs — a partial figure, excluded from the agreement stats.")
+    return L
 
 
 def run_report(

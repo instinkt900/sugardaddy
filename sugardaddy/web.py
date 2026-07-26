@@ -423,6 +423,11 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
                 doses,
                 dia_minutes=cfg.insulin.dia_minutes,
                 peak_minutes=cfg.insulin.peak_minutes,
+                # Experimental bolus reference — absent from the payload unless an
+                # ISF is configured, which is what keeps the UI columns hidden.
+                isf_mgdl=cfg.isf_mgdl,
+                icr=cfg.insulin.icr,
+                target_mgdl=cfg.bolus_target_mgdl,
             ),
         }
 

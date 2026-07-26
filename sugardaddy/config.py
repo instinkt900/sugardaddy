@@ -59,6 +59,13 @@ class InsulinConfig:
     # insulin-awareness.md). Used only for retrospective IOB context, never dosing.
     dia_minutes: int = 300  # Duration of Insulin Action (~4–6 h for rapid analogs)
     peak_minutes: int = 75  # time to peak activity (~65–75 min aspart/lispro)
+    # Strength parameters for the EXPERIMENTAL retrospective bolus reference.
+    # Unset (None) keeps that feature switched off entirely — the app must never
+    # infer or auto-tune these, so "no value" means "no figure", not "guess one".
+    # isf/target_bg are in the DISPLAY unit (like target_low/high); icr is grams.
+    isf: float | None = None        # glucose drop per 1 u
+    icr: float | None = None        # grams of carb covered by 1 u
+    target_bg: float | None = None  # correction aim; defaults to the target band midpoint
 
 
 @dataclass
@@ -88,6 +95,31 @@ class Config:
         from sugardaddy.constants import mmol_to_mgdl
 
         return mmol_to_mgdl(self.web.target_high)
+
+    @property
+    def isf_mgdl(self) -> float | None:
+        """Configured ISF in mg/dL per unit, or None when unset. ISF is a *delta*,
+        so it scales by the same factor as a reading (no offset involved)."""
+        from sugardaddy.constants import mmol_to_mgdl
+
+        if self.insulin.isf is None:
+            return None
+        return mmol_to_mgdl(self.insulin.isf) if self.web.units == "mmol/L" else self.insulin.isf
+
+    @property
+    def bolus_target_mgdl(self) -> float:
+        """What a correction aims at. Defaults to the midpoint of the target band
+        — an explainable choice rather than a clinical one; set `target_bg` in
+        [insulin] to use your own."""
+        from sugardaddy.constants import mmol_to_mgdl
+
+        if self.insulin.target_bg is None:
+            return (self.target_low_mgdl + self.target_high_mgdl) / 2
+        return (
+            mmol_to_mgdl(self.insulin.target_bg)
+            if self.web.units == "mmol/L"
+            else self.insulin.target_bg
+        )
 
 
 def _known(section: dict, cls) -> dict:
