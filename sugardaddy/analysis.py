@@ -152,7 +152,8 @@ def post_meal_responses(
                 target_mgdl=target_mgdl,
                 isf_mgdl_per_unit=isf_mgdl,
                 icr_g_per_unit=icr,
-                carbs_g=meal.total_carbs,
+                # Partial plate → unknown, not a smaller meal (see Meal.carbs_complete).
+                carbs_g=meal.total_carbs if meal.carbs_complete else None,
                 iob_units=iob_start,
             )
             row["ref"] = ref.as_dict()
@@ -330,12 +331,18 @@ def insulin_summary(doses: list[InsulinDose]) -> dict:
 
 def carb_coverage(meals: list[Meal]) -> dict:
     """How many logged meals actually carry a carb count — the gate on any
-    carb-ratio analysis. Reported so improving logging discipline is measurable."""
+    carb-ratio analysis. Reported so improving logging discipline is measurable.
+
+    ``partial`` counts plates where only *some* items were carbed: they show a
+    total and so count as covered, but the figure understates the meal, which
+    matters to anything doing arithmetic on it."""
     total = len(meals)
     with_carbs = sum(1 for m in meals if m.total_carbs is not None)
+    partial = sum(1 for m in meals if m.total_carbs is not None and not m.carbs_complete)
     return {
         "total": total,
         "with_carbs": with_carbs,
+        "partial": partial,
         "percent": round(100 * with_carbs / total, 1) if total else 0.0,
     }
 
@@ -386,9 +393,10 @@ def bolus_backtest(
         if not near:
             carbs, carbs_known = 0.0, True
         else:
-            vals = [m.total_carbs for m in near if m.total_carbs is not None]
-            carbs_known = len(vals) == len(near)
-            carbs = sum(vals) if carbs_known else None
+            # Every co-timed plate must be *fully* carbed: a meal with some items
+            # logged and some not would otherwise pass as a smaller, confident meal.
+            carbs_known = all(m.carbs_complete for m in near)
+            carbs = sum(m.total_carbs or 0.0 for m in near) if carbs_known else None
 
         prior = [d for d in history if d.ts_utc < dose.ts_utc]
         iob = active_iob(prior, dose.ts_utc, dia_minutes=dia_minutes, peak_minutes=peak_minutes)

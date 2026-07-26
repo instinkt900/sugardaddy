@@ -73,6 +73,17 @@ class Meal:
         return round(sum(vals), 1) if vals else None
 
     @property
+    def carbs_complete(self) -> bool:
+        """Whether EVERY item on the plate carries a carb count.
+
+        ``total_carbs`` sums the items that have one, which is right for display
+        but would quietly understate a plate where only some items were logged
+        (2 items, 1 carbed reads as a confident total). Anything doing arithmetic
+        on carbs — the bolus reference in particular — should treat a partial
+        plate as unknown rather than as a smaller meal."""
+        return bool(self.items) and all(i.carbs_g is not None for i in self.items)
+
+    @property
     def total_calories(self) -> float | None:
         vals = [i.calories * i.count for i in self.items if i.calories is not None]
         return round(sum(vals)) if vals else None

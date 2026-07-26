@@ -210,6 +210,64 @@ def test_agreement_prefers_fully_logged_events():
     assert "carbs" in unlogged["ref"]["missing"]
 
 
+def test_partly_carbed_plate_counts_as_unknown():
+    """A plate with 2 items where only 1 carries carbs must NOT pass as a
+    confident smaller meal — that silently understates the carb half and lets an
+    incomplete event into the agreement stats."""
+    partial = Meal(
+        ts_utc=T0,
+        name="eggs on toast",
+        items=[MealItem(name="egg with toast", count=4, carbs_g=20), MealItem(name="chocolate")],
+    )
+    assert partial.total_carbs == 80.0     # display total is unchanged
+    assert partial.carbs_complete is False  # but arithmetic must not trust it
+
+    out = analysis.bolus_backtest(
+        [r(0, 6.9)], [InsulinDose(ts_utc=T0, units=8.0, kind="bolus")], [partial], UNITS,
+        isf_mgdl=ISF, icr=ICR, target_mgdl=TARGET,
+    )
+    (e,) = out["events"]
+    assert e["carbs_known"] is False
+    assert e["carbs_g"] is None
+    assert "carbs" in e["ref"]["missing"]
+    assert out["agreement"]["n_full_inputs"] == 0
+
+    rows = analysis.post_meal_responses(
+        [r(0, 6.9), r(3600, 7.5)], [partial], UNITS, [InsulinDose(ts_utc=T0, units=8.0)],
+        isf_mgdl=ISF, icr=ICR, target_mgdl=TARGET,
+    )
+    assert "carbs" in rows[0]["ref"]["missing"]
+
+
+def test_fully_carbed_plate_still_counts():
+    """The fix must not make every multi-item meal unknown."""
+    full = Meal(
+        ts_utc=T0,
+        name="full plate",
+        items=[MealItem(name="toast", count=2, carbs_g=20), MealItem(name="juice", carbs_g=15)],
+    )
+    assert full.carbs_complete is True and full.total_carbs == 55.0
+    out = analysis.bolus_backtest(
+        [r(0, 6.0)], [InsulinDose(ts_utc=T0, units=5.5, kind="bolus")], [full], UNITS,
+        isf_mgdl=ISF, icr=ICR, target_mgdl=TARGET,
+    )
+    (e,) = out["events"]
+    assert e["carbs_known"] is True and e["carbs_g"] == 55.0
+    assert out["agreement"]["n_full_inputs"] == 1
+
+
+def test_carb_coverage_reports_partial_plates():
+    meals = [
+        Meal(ts_utc=T0, items=[MealItem(name="a", carbs_g=10)]),                        # complete
+        Meal(ts_utc=T0 + 1, items=[MealItem(name="a", carbs_g=10), MealItem(name="b")]),  # partial
+        Meal(ts_utc=T0 + 2, items=[MealItem(name="b")]),                                # none
+    ]
+    cc = analysis.carb_coverage(meals)
+    assert cc["total"] == 3
+    assert cc["with_carbs"] == 2  # unchanged: partial still shows a total
+    assert cc["partial"] == 1
+
+
 def test_post_meal_reference_is_absent_without_isf():
     """The desktop columns hinge on this key being missing when ISF is unset."""
     rows = analysis.post_meal_responses(

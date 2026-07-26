@@ -105,7 +105,7 @@ def test_carb_coverage():
     with_carbs = Meal(ts_utc=T0, items=[MealItem(name="toast", carbs_g=20.0, count=1)])
     without = Meal(ts_utc=T0 + 60, items=[MealItem(name="mystery", count=1)])
     cc = analysis.carb_coverage([with_carbs, without])
-    assert cc == {"total": 2, "with_carbs": 1, "percent": 50.0}, cc
+    assert cc == {"total": 2, "with_carbs": 1, "partial": 0, "percent": 50.0}, cc
     assert analysis.carb_coverage([])["percent"] == 0.0
 
 

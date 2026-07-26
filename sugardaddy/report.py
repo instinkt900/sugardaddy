@@ -163,6 +163,8 @@ def _fmt_text(rep: dict, tzinfo) -> str:
 
     cc = rep["carb_coverage"]
     L.append(f"CARB LOGGING — {cc['with_carbs']}/{cc['total']} meals have a carb count ({cc['percent']}%)")
+    if cc.get("partial"):
+        L.append(f"  {cc['partial']} of those are PARTIAL (some items uncarbed) — the total understates the meal")
     L.append("")
 
     L.append("POST-MEAL RESPONSE (start → peak → +2h; IOB@start excludes the meal bolus)")
