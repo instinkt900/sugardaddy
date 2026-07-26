@@ -54,6 +54,16 @@
 
   <section id="tab-meal" class="logform hidden">
     <div id="meal-builder">
+      <p class="field-note muted">Optional: pick a saved meal or name this one to save it.</p>
+      <div class="combo">
+        <div class="combo-field">
+          <input type="text" id="meal-name" autocomplete="off"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tmpl-suggest"
+                 placeholder="meal name, or pick a saved meal" aria-label="Meal name">
+          <ul id="tmpl-suggest" class="combo-list" role="listbox" hidden></ul>
+        </div>
+      </div>
+
       <ul id="plate-list" class="plate-list"></ul>
       <p id="plate-empty" class="muted plate-empty">No items yet — add foods below.</p>
       <div id="plate-totals" class="plate-totals muted"></div>
@@ -73,16 +83,6 @@
           <label>Calories<input type="number" id="food-cal" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
           <label>Count<input type="number" id="food-count" step="0.5" min="0" value="1" inputmode="decimal"></label>
           <button type="button" id="add-to-plate" class="combo-btn add-plate-btn">Add</button>
-        </div>
-      </div>
-
-      <p class="field-note muted">Naming a meal saves it for next time.</p>
-      <div class="combo">
-        <div class="combo-field">
-          <input type="text" id="meal-name" autocomplete="off"
-                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tmpl-suggest"
-                 placeholder="meal name, or pick a saved meal" aria-label="Meal name">
-          <ul id="tmpl-suggest" class="combo-list" role="listbox" hidden></ul>
         </div>
       </div>
 
