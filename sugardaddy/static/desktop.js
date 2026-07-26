@@ -256,12 +256,21 @@
       // step; CSS hides them unless the table carries .show-ref. The title holds
       // the component breakdown, so a gap against the dose given is diagnosable.
       const r = p.ref || {};
+      // A figure built from only *some* of its inputs (e.g. carbs never logged)
+      // is still shown — the correction half is real — but must be marked "*",
+      // matching the report, so a small number can't read as "barely dose here"
+      // when the carb half is simply absent.
+      const miss = r.missing || [];
+      const partial = miss.length > 0;
+      const why = partial ? `incomplete — no ${miss.join(", ")} for this meal` : (p.ref_note || "");
       const ref = r.suggested_units == null
-        ? `<td class="ref-col muted" title="missing: ${esc((r.missing || []).join(", "))}">—</td>
+        ? `<td class="ref-col muted" title="${esc(why)}">—</td>
            <td class="ref-col"></td>`
-        : `<td class="ref-col" title="${esc(p.ref_note || "")}">${r.suggested_units}u</td>
-           <td class="ref-col ${p.ref_delta_units > 0 ? "ref-over" : p.ref_delta_units < 0 ? "ref-under" : ""}">
-             ${p.ref_delta_units > 0 ? "+" : ""}${p.ref_delta_units}</td>`;
+        : `<td class="ref-col ${partial ? "ref-partial" : ""}" title="${esc(why)}">
+             ${r.suggested_units}u${partial ? "*" : ""}</td>
+           <td class="ref-col ${partial ? "ref-partial" : p.ref_delta_units > 0 ? "ref-over" : p.ref_delta_units < 0 ? "ref-under" : ""}"
+               title="${esc(why)}">
+             ${p.ref_delta_units > 0 ? "+" : ""}${p.ref_delta_units}${partial ? "*" : ""}</td>`;
       tr.innerHTML = `<td>${SD.stamp(p.ts_utc * 1000)}</td><td>${esc(p.description) || "(meal)"}</td>
         <td>${p.carbs_g ?? ""}</td><td>${dose(p.bolus_units)}</td><td>${dose(p.iob_start_units)}</td>${ref}
         <td>${p.start_display}</td><td>${p.peak_display}</td>

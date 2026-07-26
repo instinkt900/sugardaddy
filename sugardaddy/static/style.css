@@ -278,6 +278,8 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 .show-ref .ref-col { display: table-cell; }
 .ref-over { color: var(--warn, #ffb020); }   /* gave more than the reference */
 .ref-under { color: var(--accent); }          /* gave less */
+/* built from only some of its inputs — greyed and "*"-marked, never a plain number */
+.ref-partial { color: var(--muted); font-style: italic; }
 .ref-caveat {
   margin: 0 0 10px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5;
   color: var(--muted); border-left: 3px solid var(--warn, #ffb020);
