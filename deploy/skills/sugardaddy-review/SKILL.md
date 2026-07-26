@@ -17,12 +17,29 @@ The heavy number-crunching lives in the repo (`sugardaddy report`), so this skil
 only **fetches**, **runs the report**, and **interprets** — including the trend
 versus the last review.
 
+## What this system is for
+
+The purpose of the whole system is to **collect data to better understand the
+management of diabetes — not to guide it**. Guidance comes from the user's own
+assessment and from professional experts. This review is retrospective: an
+attempt to understand *behaviours and reactions* after the fact.
+
+Hold that distinction everywhere. "Your glucose climbed for two hours after that
+meal" is understanding. "So take more for it" is guidance, and is not this
+skill's job — nor is it the job of any number the report emits.
+
 ## Guardrails — read first
 
 - **This is not medical advice and not a medical device.** Report only what the
   data shows (patterns, timing, variability, coverage). Do not prescribe doses,
   ratios, or changes. Frame everything as observations and questions the user
   might raise with their own clinician. Say this explicitly in the output.
+- **The `bolus_backtest` section is an experiment being graded, not a source.**
+  It contains calculated dose figures. They are computed from `[insulin].isf` /
+  `icr` in the config, which are user-set and may be rough placeholders rather
+  than clinician-given values. Never quote a `suggested_units` figure as what the
+  user should have taken, and never propose a new ISF/ICR value. See "The bolus
+  reference" below for what you *may* say about it.
 - **Connection details are machine-local, never in git.** The serve host and
   paths live in `connection.env` next to this file — an untracked, per-machine
   file. Only `connection.env.example` (placeholders) is committed. Do not paste a
@@ -109,6 +126,33 @@ Read the JSON, don't re-derive the maths. Focus the write-up on management:
   point at fast-carb foods or dose timing. Low `carb_coverage` is worth naming
   every time — without carb counts no ratio analysis is possible, so improving
   logging is the concrete lever that unlocks deeper future reviews.
+  `carb_coverage.partial` counts plates where only *some* items were carbed: the
+  total understates the meal, so treat those meals' carb figures as soft.
+
+### The bolus reference (`bolus_backtest`, and `ref` on `post_meal` rows)
+
+Present only when an ISF is configured; `available: false` means skip it
+entirely. It replays a textbook formula against doses the user already decided
+on. **The calculator is on trial here, not the user's dosing.**
+
+What you may do with it:
+- Report **agreement drift**: how `mean_abs_delta`, `mean_signed_delta` and
+  `within_1u_percent` moved since the last review. That is a fact about the
+  model, and it is the main reason the section exists.
+- Note **which component** drives a systematic gap — carb cover vs correction vs
+  the IOB subtraction — since that localises *why* model and human disagree.
+- Observe that disagreement concentrates somewhere (e.g. large meals, or doses
+  with insulin already active) as a **pattern worth understanding**.
+
+What you must not do:
+- Do not present `suggested_units` as the dose that should have been given, in
+  any phrasing. The user's decisions are the reference point, not the formula's.
+- Do not recommend an ISF or ICR value, or a direction to move one. If the model
+  is systematically off, that is an observation to take to a clinician.
+- Do not read the `n_full_inputs` figure as an accuracy claim when it is small —
+  under ~10 fully-logged doses, say the sample is too thin to interpret.
+- Ignore events flagged with `missing` (partial inputs); they are already
+  excluded from the agreement stats and mean nothing on their own.
 
 ## Suggestions / talking points
 
@@ -127,7 +171,8 @@ Rules for this section:
   through the back half of the night?" rather than "increase your basal."
 - **Never give numbers to change.** No specific doses, ratios, correction
   factors, basal rates, or timing amounts. Suggest *what to discuss/adjust and
-  watch*, not *by how much*.
+  watch*, not *by how much*. This includes the configured ISF/ICR and anything
+  in `bolus_backtest` — a calculated figure is still a number to change.
 - **Make each point declinable.** Phrase so the user can reasonably say "no, I
   already know why that is" — they hold knowledge the data doesn't.
 - **Order by likely impact**, and keep it to ~3–6 points.

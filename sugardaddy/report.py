@@ -193,7 +193,8 @@ def _fmt_backtest(bt: dict, tzinfo) -> list[str]:
     the calculator is what's on trial here, and its components are shown so a
     disagreement with the user's own dose is diagnosable rather than mysterious."""
     L = ["BOLUS REFERENCE — EXPERIMENTAL, not dosing advice"]
-    L.append("  A calculated figure to compare against what you actually decided.")
+    L.append("  The calculator is what's being tested here, not your dosing. These figures")
+    L.append("  come from configured ISF/ICR values and exist to be questioned, never followed.")
     L.append("  Δ is (your dose − reference): + means you gave more than the formula.")
     a = bt["agreement"]
     if not a or not a["n"]:
