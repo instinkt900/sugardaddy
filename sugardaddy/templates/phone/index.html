@@ -64,25 +64,27 @@
         </div>
       </div>
 
-      <ul id="plate-list" class="plate-list"></ul>
-      <p id="plate-empty" class="muted plate-empty">No items yet — add foods below.</p>
-      <div id="plate-totals" class="plate-totals muted"></div>
+      <div class="plate-build">
+        <ul id="plate-list" class="plate-list"></ul>
+        <p id="plate-empty" class="muted plate-empty">No items yet — add foods below.</p>
+        <div id="plate-totals" class="plate-totals muted"></div>
 
-      <div class="additem">
-        <div class="combo">
-          <div class="combo-field">
-            <input type="text" id="food-name" autocomplete="off"
-                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="food-suggest"
-                   placeholder="add a food (pick or type)">
-            <ul id="food-suggest" class="combo-list" role="listbox" hidden></ul>
+        <div class="additem">
+          <div class="combo">
+            <div class="combo-field">
+              <input type="text" id="food-name" autocomplete="off"
+                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="food-suggest"
+                     placeholder="add a food (pick or type)">
+              <ul id="food-suggest" class="combo-list" role="listbox" hidden></ul>
+            </div>
+            <button type="button" id="save-to-library" class="combo-btn" title="Save this food to the library">+
           </div>
-          <button type="button" id="save-to-library" class="combo-btn" title="Save this food to the library">+
-        </div>
-        <div class="additem-nums">
-          <label>Carbs (g)<input type="number" id="food-carbs" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
-          <label>Calories<input type="number" id="food-cal" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
-          <label>Count<input type="number" id="food-count" step="0.5" min="0" value="1" inputmode="decimal"></label>
-          <button type="button" id="add-to-plate" class="combo-btn add-plate-btn">Add</button>
+          <div class="additem-nums">
+            <label>Carbs (g)<input type="number" id="food-carbs" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
+            <label>Calories<input type="number" id="food-cal" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
+            <label>Count<input type="number" id="food-count" step="0.5" min="0" value="1" inputmode="decimal"></label>
+            <button type="button" id="add-to-plate" class="combo-btn add-plate-btn">Add</button>
+          </div>
         </div>
       </div>
 
