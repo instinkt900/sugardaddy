@@ -54,24 +54,6 @@
 
   <section id="tab-meal" class="logform hidden">
     <div id="meal-builder">
-      <label>Meal <span class="muted">— naming it saves it for next time</span>
-        <div class="combo">
-          <div class="combo-field">
-            <input type="text" id="meal-name" autocomplete="off"
-                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tmpl-suggest"
-                   placeholder="name, or pick a saved meal">
-            <ul id="tmpl-suggest" class="combo-list" role="listbox" hidden></ul>
-          </div>
-        </div>
-      </label>
-
-      <label>Type
-        <select id="meal-type">
-          <option value="">—</option>
-          {% for t in meal_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
-        </select>
-      </label>
-
       <ul id="plate-list" class="plate-list"></ul>
       <p id="plate-empty" class="muted plate-empty">No items yet — add foods below.</p>
       <div id="plate-totals" class="plate-totals muted"></div>
@@ -94,15 +76,28 @@
         </div>
       </div>
 
-      <label>Time
-        <div class="ts-row">
-          <input type="datetime-local" id="meal-ts" value="{{ now_input }}">
-          <button type="button" class="combo-btn now-btn" data-now="meal-ts">Now</button>
+      <p class="field-note muted">Naming a meal saves it for next time.</p>
+      <div class="combo">
+        <div class="combo-field">
+          <input type="text" id="meal-name" autocomplete="off"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tmpl-suggest"
+                 placeholder="meal name, or pick a saved meal" aria-label="Meal name">
+          <ul id="tmpl-suggest" class="combo-list" role="listbox" hidden></ul>
         </div>
-      </label>
-      <label>Note
-        <input type="text" id="meal-note" placeholder="optional">
-      </label>
+      </div>
+
+      <select id="meal-type" aria-label="Meal type">
+        <option value="">Meal type</option>
+        {% for t in meal_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+      </select>
+
+      <div class="ts-row">
+        <input type="datetime-local" id="meal-ts" value="{{ now_input }}" aria-label="Time">
+        <button type="button" class="combo-btn now-btn" data-now="meal-ts">Now</button>
+      </div>
+
+      <input type="text" id="meal-note" placeholder="optional note" aria-label="Note">
+
       <button type="button" id="log-meal" class="big-btn">Log meal</button>
       <p id="meal-status" class="km-status muted"></p>
     </div>

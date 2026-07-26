@@ -163,6 +163,11 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 .km-status { margin: 0; font-size: 13px; min-height: 1em; }
 
 /* --- meal plate builder (phone) --- */
+/* Match the insulin form: bare inputs stacked with placeholder-as-label, so
+   #meal-builder needs the column layout the insulin <form> gets from .logform. */
+#meal-builder { display: flex; flex-direction: column; gap: 12px; }
+.field-note { margin: 0 0 -6px; font-size: 12px; }
+
 .plate-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .plate-list li {
   display: flex; align-items: center; gap: 8px;
