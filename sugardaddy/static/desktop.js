@@ -473,7 +473,8 @@
       <td><input type="number" class="it-carbs" step="1" min="0" value="${it.carbs_g ?? ""}" style="width:66px"></td>
       <td><input type="number" class="it-cal" step="1" min="0" value="${it.calories ?? ""}" style="width:66px"></td>
       <td><input type="number" class="it-count" step="0.5" min="0" value="${it.count ?? 1}" style="width:60px"></td>
-      <td><button type="button" class="icon-btn danger it-del">✕</button></td>`;
+      <td class="row-actions"><button type="button" class="icon-btn save it-save" title="Save to food library">+</button>
+      <button type="button" class="icon-btn danger it-del">✕</button></td>`;
     const nameI = tr.querySelector(".it-name");
     const carbsI = tr.querySelector(".it-carbs");
     const calI = tr.querySelector(".it-cal");
@@ -488,8 +489,53 @@
         if (calI.value === "") calI.value = f.calories ?? "";
       }
     });
+    tr.querySelector(".it-save").onclick = () => saveItemAsFood(tr, nameI);
     tr.querySelector(".it-del").onclick = () => tr.remove();
     return tr;
+  }
+
+  // Push this item into the food library. POST /api/foods upserts by name, so
+  // this saves a new food or overwrites the matching one; the plate itself is
+  // untouched (items stay snapshots) until its own Save.
+  function saveItemAsFood(tr, nameI) {
+    const name = nameI.value.trim();
+    if (!name) { alert("Name the food first."); return; }
+    const btn = tr.querySelector(".it-save");
+    btn.disabled = true;
+    fetch("/api/foods", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        carbs_g: tr.querySelector(".it-carbs").value,
+        calories: tr.querySelector(".it-cal").value,
+      }),
+    })
+      .then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Save failed.");
+        return r.json();
+      })
+      .then((food) => {
+        nameI.dataset.foodId = food.id; // the item is library-backed from now on
+        btn.textContent = "✓";
+        setTimeout(() => { btn.textContent = "+"; }, 1200);
+        refreshFoods();
+      })
+      .catch((e) => alert(e.message))
+      .finally(() => { btn.disabled = false; });
+  }
+
+  // Re-pull the library after an item is saved into it. A full load() would tear
+  // down the open meal/template editor, so only the datalist and (when nothing
+  // there is mid-edit) the foods table are refreshed.
+  function refreshFoods() {
+    return fetch("/api/foods")
+      .then((r) => r.json())
+      .then((foods) => {
+        FOODS = foods;
+        populateFoodsDatalist();
+        if (!document.querySelector("#foods-table input")) renderFoods(foods);
+      });
   }
 
   function readItems(tbody) {
