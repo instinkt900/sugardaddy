@@ -258,12 +258,23 @@
         interaction: { mode: "nearest", intersect: true },
         plugins: {
           legend: { labels: { color: "#e8eaf0" } },
-          tooltip: { callbacks: { label: (c) => {
-            if (c.raw.label) return c.raw.label;
-            if (c.dataset.yAxisID === "y1") return `${c.parsed.y} u active`;
-            if (c.dataset.yAxisID === "y2") return `${c.parsed.y} u/hr acting`;
-            return `${c.parsed.y} ${chartPayload.units}`;
-          } } },
+          tooltip: { callbacks: {
+            // On a linear axis Chart.js titles the tooltip with the raw x value,
+            // so hovering a line read "1,785,182,204,000"; the dose/meal scatters
+            // got no title at all, leaving no way to see when a marker was. Both
+            // want the same stamp the crosshair uses.
+            title: (items) => {
+              const pt = items.length ? items[0] : null;
+              const x = pt ? (pt.parsed ? pt.parsed.x : null) ?? (pt.raw ? pt.raw.x : null) : null;
+              return x == null ? "" : SD.tableStamp(x);
+            },
+            label: (c) => {
+              if (c.raw.label) return c.raw.label;
+              if (c.dataset.yAxisID === "y1") return `${c.parsed.y} u active`;
+              if (c.dataset.yAxisID === "y2") return `${c.parsed.y} u/hr acting`;
+              return `${c.parsed.y} ${chartPayload.units}`;
+            },
+          } },
         },
         scales: {
           // Pinned to the requested window: left to itself the axis would
