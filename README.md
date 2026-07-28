@@ -1,44 +1,48 @@
 # Sugar Daddy
 
-A small, self-contained app for people using a **FreeStyle Libre** CGM: it
-ingests your glucose readings over time, lets you log **insulin doses** and
-**meals** from your phone, and gives you a desktop dashboard to review it all on
+Sugar Daddy is a small, self-contained app for people who use a **FreeStyle
+Libre** CGM. It ingests your glucose readings over time. You log **insulin
+doses** and **meals** from your phone. A desktop dashboard shows all of it on
 one timeline.
 
-It talks **directly to LibreLinkUp** (the same sharing service the Home Assistant
-Libre integration uses under the hood), so it needs no Home Assistant at runtime.
+The app connects **directly to LibreLinkUp**, the same sharing service that the
+Home Assistant Libre integration uses. It needs no Home Assistant at runtime.
 Everything runs on your own infrastructure.
 
-> **Not a medical device.** Sugar Daddy is for personal record-keeping and
-> *retrospective* analysis — spotting patterns to discuss with your care team. It
-> must **not** be used for real-time dosing decisions.
+> **Not a medical device.** Sugar Daddy keeps personal records and supports
+> *retrospective* analysis. Use it to find patterns to discuss with your care
+> team. Do not use it for real-time dosing decisions.
 
 ## What it does
 
-- **Ingests glucose** from LibreLinkUp on an interval and stores every reading
-  (deduplicated) in a local SQLite database.
+- **Glucose ingest** — the app reads LibreLinkUp at a set interval. It stores
+  every reading in a local SQLite database and skips duplicates.
 - **Two web UIs, one backend:**
-  - **Phone** (`/`) — input-first: current reading + trend (auto-refreshing), a
-    compact 24h chart, fast insulin logging, and a **meal plate builder** — add
-    foods (from the library or typed ad-hoc) with a count, then log the whole
-    plate. Load a **saved meal** to prefill the plate in one tap.
-  - **Desktop** (`/desktop`) — review-first: a large interactive chart (glucose
-    line + target band + dose/meal markers) with date-range selection, sortable
-    tables with inline **add / edit / delete**, and analysis panels. Manages the
-    food library and saved meals.
-- **Composite meals** — a meal is a plate of **foods**, each with a count (e.g.
-  1 sandwich + 1 juice + 2 biscuits). Carbs and calories total automatically.
-- **Food library** — reusable foods (name, description, carbs, calories) with
-  full add/edit/delete, shared across every device. Names are unique
-  (case-insensitive): re-saving a name updates the existing food.
-- **Saved meals** — named plates for fast logging, with **Update / Save as new**.
-  They are **live-linked** to the food library, so correcting a food updates
-  every saved meal that uses it — but **history is a snapshot**: editing or
-  deleting a food or saved meal never changes meals you've already logged.
-- **Analyses** the timeline: time-in-range, average glucose + estimated GMI,
-  high/low counts, and the 2-hour glucose response after each logged meal.
-- **Seeds history** once from an existing Home Assistant install (optional), so
-  your charts have depth from day one.
+  - **Phone** (`/`) — built for input. It shows the current reading and trend,
+    and it refreshes automatically. Below that sit a compact 24h chart and a
+    fast insulin form. The **meal plate builder** takes foods from the library
+    or from ad-hoc text, each with a count, then logs the whole plate. To
+    prefill the plate in one tap, load a **saved meal**.
+  - **Desktop** (`/desktop`) — built for review. A large interactive chart plots
+    the glucose line, the target band, and markers for doses and meals. Pick any
+    date range. Sort the tables, and add, edit, or delete rows inline. Analysis
+    panels sit alongside. This UI also manages the food library and saved meals.
+- **Composite meals** — a meal is a plate of **foods**, each with a count, for
+  example 1 sandwich, 1 juice, and 2 biscuits. The app totals the carbs and
+  calories.
+- **Food library** — reusable foods with a name, description, carbs, and
+  calories. Add, edit, and delete them freely, and every device sees the same
+  library. Names are unique and ignore case. If you save a name again, the app
+  updates the food that already has it.
+- **Saved meals** — named plates for fast logging, with **Update** and **Save as
+  new**. A saved meal links live to the food library, so a correction to a food
+  reaches every saved meal that uses it. History is a snapshot. If you edit or
+  delete a food or a saved meal, the meals you already logged never change.
+- **Analysis** of the timeline — time in range, average glucose, estimated GMI,
+  and high and low counts. It also measures the 2-hour glucose response after
+  each logged meal.
+- **History seed** — import once from an existing Home Assistant install. This
+  step is optional, and it gives your charts depth from day one.
 
 ## How it works
 
@@ -56,23 +60,24 @@ Everything runs on your own infrastructure.
    └───────────────────────────┘
 ```
 
-- The glucose source is behind a small `GlucoseSource` interface; LibreLinkUp is
-  the default. Home Assistant is used *only* for the one-time backfill.
-- Credentials live in the environment (Docker `.env`), never in the committed
-  config or the database.
-- Access is **LAN/VPN-only with no auth** by design — it trusts the network it
-  binds to. Don't expose it directly to the internet.
+- A small `GlucoseSource` interface hides the source of the readings.
+  LibreLinkUp is the default. The app uses Home Assistant *only* for the
+  one-time backfill.
+- Credentials live in the environment, in the Docker `.env` file. They never
+  reach the committed config or the database.
+- Access is LAN or VPN only, with no auth by design. The app trusts the network
+  it binds to. Do not expose it directly to the internet.
 
 ## Example setup
 
-Addresses below are placeholders (RFC 5737 documentation IPs) — substitute your
-own. A flat LAN (optionally reached over a VPN when away) is all you need.
+The addresses below are placeholders from RFC 5737. Substitute your own. A flat
+LAN is all you need, and you can reach it over a VPN when you are away.
 
 | piece | example | notes |
 |-------|---------|-------|
 | serve host | `192.0.2.20:8080` | any Docker-capable box on your LAN |
-| Home Assistant | `192.0.2.10:8123` | optional, for the one-time history seed only |
-| your phone / PC | — | on the LAN or VPN; open the URLs above |
+| Home Assistant | `192.0.2.10:8123` | optional, for the one-time history seed |
+| your phone or PC | — | on the LAN or VPN, and it opens the URLs above |
 
 ## Repo layout
 
@@ -97,43 +102,52 @@ deploy/install-server.sh
 
 ## Commands
 
-Run via `sugardaddy <command>` (installed) or `python -m sugardaddy <command>`.
+Run `sugardaddy <command>` if you installed the package. Otherwise run
+`python -m sugardaddy <command>`.
 
 ```bash
 sugardaddy serve    -c config.toml            # web app + glucose poller
-sugardaddy ingest   -c config.toml [--once]   # poller only (--once = sync + exit)
+sugardaddy ingest   -c config.toml [--once]   # poller only (--once = sync, then exit)
 sugardaddy backfill -c config.toml --days 90  # one-time HA history seed
-sugardaddy init-db  -c config.toml            # create the DB schema and exit
-sugardaddy report   -c config.toml [--days N] # retrospective analysis (text/--json)
+sugardaddy init-db  -c config.toml            # create the DB schema, then exit
+sugardaddy report   -c config.toml [--days N] # retrospective analysis (text or --json)
 ```
-Add `-v` for debug logging.
+
+Add `-v` to get debug logs.
 
 ### `report` — retrospective analysis
 
-Prints a read of the stored timeline over a window (default 14 days): overall
-time-in-range / average / estimated GMI, glucose variability (SD and CV),
-per-day and per-hour-of-day breakdowns, discrete low episodes (contiguous
-below-range runs collapsed into single events), an insulin dose summary by kind,
-carb-logging coverage, and the 2-hour glucose response after each logged meal.
-It is deterministic number-crunching only — it makes no clinical judgements.
+`report` reads the stored timeline over a window. The default window is 14 days.
+It covers:
+
+- time in range, average glucose, and estimated GMI
+- glucose variability, as SD and CV
+- a breakdown per day and per hour of the day
+- discrete low episodes, where contiguous below-range runs collapse into single
+  events
+- an insulin dose summary by kind
+- carb-logging coverage
+- the 2-hour glucose response after each logged meal
+
+The command crunches numbers only. It makes no clinical judgments.
 
 ```bash
 sugardaddy report -c config.toml --days 7           # human-readable text
 sugardaddy report -c config.toml --days 30 --json   # machine-readable JSON
-sugardaddy report -c config.toml --db /tmp/copy.db   # analyse a different DB file
+sugardaddy report -c config.toml --db /tmp/copy.db  # analyze a different DB file
 ```
 
-`--db` overrides the database path from the config (units, target range, and
-timezone are still taken from the config), which is handy for analysing a copy
-of the live database pulled off the serve host.
+`--db` overrides the database path from the config. Units, target range, and
+timezone still come from the config. Use it to analyze a copy of the live
+database that you copied from the serve host.
 
 ### `sugardaddy-review` skill (Claude Code, optional)
 
-`deploy/skills/sugardaddy-review/` is a Claude Code skill that fetches the live
-DB off the serve host, runs `report --json`, and writes a management-focused
-review — comparing against the previous run and keeping a local history so
-trends are visible over time. It does the fetch + interpretation; the maths is
-still `sugardaddy report`.
+`deploy/skills/sugardaddy-review/` is a Claude Code skill. It fetches the live
+DB from the serve host, runs `report --json`, and writes a management-focused
+review. The review compares against the previous run and keeps a local history,
+so trends stay visible over time. The skill does the fetch and the
+interpretation. `sugardaddy report` still does the math.
 
 Install it on any machine you use:
 
@@ -141,54 +155,59 @@ Install it on any machine you use:
 bash deploy/install-skill.sh
 ```
 
-That copies the skill into `~/.claude/skills/sugardaddy-review/` and seeds a
-machine-local `connection.env`. Edit it to point at your serve host:
+The script copies the skill into `~/.claude/skills/sugardaddy-review/`. It also
+seeds a machine-local `connection.env`. Edit that file and point it at your
+serve host:
 
 ```bash
-$EDITOR ~/.claude/skills/sugardaddy-review/connection.env   # set SD_REVIEW_HOST etc.
+$EDITOR ~/.claude/skills/sugardaddy-review/connection.env   # set SD_REVIEW_HOST
 ```
 
-`connection.env` (your host/paths) and the review `history/` (glucose data) are
-per-machine and never committed — only `connection.env.example` is tracked. Then
-in Claude Code, ask to "review my sugardaddy data" (or run `/sugardaddy-review`).
+`connection.env` holds your host and paths, and the review `history/` holds
+glucose data. Both stay per-machine, so never commit either one. The repo tracks
+`connection.env.example` alone. In Claude Code, ask to "review my sugardaddy
+data", or run `/sugardaddy-review`.
 
 ## Setup — serve side (Docker)
 
-1. Configure and add secrets:
+1. Copy the config and add your secrets:
    ```bash
    cp config.example.toml config.toml   # edit [librelink].region, [web] tz/units
    cp docker/.env.example docker/.env   # LibreLinkUp email + password
    ```
-   Use the **LibreLinkUp** account credentials (the follower account that already
-   has access to your Libre data).
-2. Build and run:
+   Use the **LibreLinkUp** account credentials. That is the follower account
+   that already has access to your Libre data.
+2. Build the image and start the container:
    ```bash
    bash deploy/install-server.sh          # or: cd docker && docker compose up -d --build
    ```
-3. Verify, then open the UIs:
+3. Check that the app answers:
    ```bash
    curl -s http://localhost:8080/healthz
    ```
-   Phone: `http://<host>:8080/` · Desktop: `http://<host>:8080/desktop`
+4. Open the UIs. Phone: `http://<host>:8080/` · Desktop:
+   `http://<host>:8080/desktop`
 
 ## Setup — seed history from Home Assistant (optional, one-time)
 
-If HA already holds months of Libre history, import it so the charts start deep:
+If HA already holds months of Libre history, import it so the charts start deep.
 
-1. Create a long-lived token in HA: **Profile → Security → Long-lived access tokens**.
-2. Set `[backfill].ha_url` and `ha_entity` in `config.toml`, put the token in
-   `docker/.env` as `SUGARDADDY_HA_TOKEN`.
-3. Run it once inside the container:
+1. In HA, create a long-lived token under **Profile → Security → Long-lived
+   access tokens**.
+2. Set `[backfill].ha_url` and `ha_entity` in `config.toml`.
+3. Put the token in `docker/.env` as `SUGARDADDY_HA_TOKEN`.
+4. Run the backfill once inside the container:
    ```bash
    cd docker && docker compose run --rm sugardaddy backfill -c /app/config.toml --days 180
    ```
-   HA stores AU sensors in mmol/L (converted to mg/dL on import); pass
-   `--unit mg/dL` if your HA sensor is already in mg/dL.
+
+HA stores AU sensors in mmol/L, and the import converts them to mg/dL. If your
+HA sensor already reports mg/dL, pass `--unit mg/dL`.
 
 ## Common operations
 
-**Change credentials** — edit `docker/.env`, then **recreate** the container (a
-plain `restart` keeps the old env):
+**Change credentials** — edit `docker/.env`, then recreate the container. A
+plain `restart` keeps the old env.
 ```bash
 cd docker && docker compose up -d --force-recreate
 ```
@@ -198,7 +217,7 @@ cd docker && docker compose up -d --force-recreate
 cd docker && docker compose up -d --build
 ```
 
-**Watch logs / back up the DB:**
+**Watch logs, and back up the DB:**
 ```bash
 docker compose logs -f
 docker compose cp sugardaddy:/data/sugardaddy.db ./backup.db
@@ -210,10 +229,11 @@ docker compose cp sugardaddy:/data/sugardaddy.db ./backup.db
 | key | default | meaning |
 |-----|---------|---------|
 | `region` | `AU` | pylibrelinkup region (AU, EU, US, …) |
-| `poll_interval_seconds` | 60 | seconds between latest-reading polls (min 15) |
-| `patient_id` | — | only if the account follows more than one person |
+| `poll_interval_seconds` | 60 | seconds between polls for the latest reading. The minimum is 15. |
+| `patient_id` | — | set this only if the account follows more than one person |
 
-Credentials: `SUGARDADDY_LIBRE_EMAIL` / `SUGARDADDY_LIBRE_PASSWORD` (env only).
+Credentials: `SUGARDADDY_LIBRE_EMAIL` and `SUGARDADDY_LIBRE_PASSWORD`, from the
+environment only.
 
 `[database]`
 | key | default | meaning |
@@ -223,10 +243,10 @@ Credentials: `SUGARDADDY_LIBRE_EMAIL` / `SUGARDADDY_LIBRE_PASSWORD` (env only).
 `[web]`
 | key | default | meaning |
 |-----|---------|---------|
-| `host` / `port` | `0.0.0.0` / 8080 | HTTP bind |
-| `timezone` | `Australia/Sydney` | display tz (storage is UTC) |
-| `units` | `mmol/L` | display unit (`mmol/L` or `mg/dL`); storage is mg/dL |
-| `target_low` / `target_high` | 3.9 / 10.0 | time-in-range band, in display units |
+| `host` and `port` | `0.0.0.0` and 8080 | HTTP bind |
+| `timezone` | `Australia/Sydney` | display tz. Storage is UTC. |
+| `units` | `mmol/L` | display unit, `mmol/L` or `mg/dL`. Storage is mg/dL. |
+| `target_low` and `target_high` | 3.9 and 10.0 | time-in-range band, in display units |
 
 `[backfill]` (one-time HA seed only)
 | key | default | meaning |
@@ -234,49 +254,57 @@ Credentials: `SUGARDADDY_LIBRE_EMAIL` / `SUGARDADDY_LIBRE_PASSWORD` (env only).
 | `ha_url` | — | Home Assistant base URL |
 | `ha_entity` | — | the glucose sensor entity id |
 
-Token: `SUGARDADDY_HA_TOKEN` (env only).
+Token: `SUGARDADDY_HA_TOKEN`, from the environment only.
 
 ## Roadmap / ideas
 
-Not built yet — captured here so the direction is clear. All of these sit on top
-of the same UTC timeline, so they're additive rather than rewrites.
+None of this is built yet. It sits here so the direction stays clear. All of it
+rides on the same UTC timeline, so each item adds to the app instead of
+rewriting it.
 
-- **Activity & wearable data (steps, heart rate, workouts).** Bring in
-  Samsung Health / Galaxy Watch metrics to enrich analysis. Two feeds:
-  - *One-time history* — import a Samsung Health data export (the CSVs it
-    produces: daily steps, heart rate, exercise) via a `sugardaddy import-samsung`
-    command. Good for deep retrospective history; not something to repeat weekly.
-  - *Ongoing* — Samsung Health already syncs into Android **Health Connect**, and
-    the Home Assistant Android companion app can expose Health Connect metrics as
-    HA sensors. Sugar Daddy would then pull activity from HA the same way it can
-    seed glucose from HA — no custom phone app, no Samsung developer approval.
-  - Storage would be a small `activity` table (steps, heart-rate readings,
-    workouts) on the shared timeline, joinable against glucose/meals/insulin.
-- **Trend analysis & prediction.** With glucose + insulin + meals (+ activity)
-  on one timeline, learn per-meal/per-time-of-day response patterns and surface
-  likely highs/lows. Strictly decision-support for review with a clinician — not
-  dosing advice.
-- **Insulin-on-board & dosing-awareness ("de-vibe the dose").** Calculate a
-  concrete anchor to check a dose against, right where insulin is logged, so it
-  isn't decided on vibes. Ships as a glanceable, non-prescriptive nudge (active
-  IOB + trajectory: "you may be more sensitive right now" / "you're running high
-  and still climbing"). A fuller IOB/ISF/ICR **bolus calculator** is a stretch
-  goal — built for academic interest and as an extra data point to *reconcile
-  against* ("it says 12 u, I feel 6 — why?"), never a directive. Full write-up,
-  formulas, and the safety boundary in [`docs/plans/insulin-awareness.md`](docs/plans/insulin-awareness.md).
-- **Nice-to-haves.** Alerts/notifications on sustained highs/lows; optional auth
-  if ever exposed beyond a trusted LAN/VPN; photo attachments on meals; CSV/export
-  of the combined timeline.
+- **Activity and wearable data (steps, heart rate, workouts).** Bring in Samsung
+  Health and Galaxy Watch metrics to give the analysis more to work with. There
+  are two feeds:
+  - *One-time history* — import a Samsung Health export through a new
+    `sugardaddy import-samsung` command. The export is a set of CSVs for daily
+    steps, heart rate, and exercise. This path suits deep retrospective history.
+    It is not something to repeat weekly.
+  - *Ongoing* — Samsung Health already syncs into Android **Health Connect**,
+    and the Home Assistant Android companion app can expose Health Connect
+    metrics as HA sensors. Sugar Daddy would then read activity from HA, the
+    same way it can seed glucose from HA. That needs no custom phone app and no
+    Samsung developer approval.
+  - Storage would be a small `activity` table for steps, heart-rate readings,
+    and workouts. It joins against glucose, meals, and insulin on the shared
+    timeline.
+- **Trend analysis and prediction.** Glucose, insulin, meals, and activity share
+  one timeline. From that, the app can learn response patterns per meal and per
+  time of day, then flag likely highs and lows. This stays decision-support for
+  review with a clinician. It is not dosing advice.
+- **Insulin-on-board and dosing awareness ("de-vibe the dose").** Calculate a
+  concrete anchor to check a dose against, right where you log the insulin, so
+  it is not decided on vibes. It ships as a glanceable, non-prescriptive nudge:
+  active IOB plus trajectory, such as "you may be more sensitive right now" or
+  "you are running high and still climbing". A fuller IOB/ISF/ICR **bolus
+  calculator** is a stretch goal, built for academic interest and as one more
+  data point to reconcile against — "it says 12 u, I feel 6 — why?" — never a
+  directive. The full write-up, the formulas, and the safety boundary are in
+  [`docs/plans/insulin-awareness.md`](docs/plans/insulin-awareness.md).
+- **Nice-to-haves.** Alerts on sustained highs and lows. Optional auth, if the
+  app ever goes beyond a trusted LAN or VPN. Photo attachments on meals. CSV
+  export of the combined timeline.
 
-Anything requiring live wearable data depends on the Health Connect → HA feed
-above; the manual export path only makes sense as a one-off seed.
+Live wearable data depends on the Health Connect to HA feed above. The manual
+export only makes sense as a one-off seed.
 
-## Notes & limitations
+## Notes and limitations
 
-- **LibreLinkUp is unofficial/reverse-engineered.** Abbott occasionally bumps a
-  required app-version header, which can pause ingestion until `pylibrelinkup` is
-  updated. Manual meal/dose logging is unaffected. Pin and update the dependency.
-- Glucose granularity is whatever LibreLinkUp reports (~5 min); this is not
-  real-time.
-- Long-term history accumulates from first run (plus the optional HA seed); the
-  live API only exposes ~12h (`graph`) to ~14 days (`logbook`).
+- **LibreLinkUp is unofficial and reverse-engineered.** Abbott occasionally
+  bumps a required app-version header, which pauses ingestion until a new
+  `pylibrelinkup` ships. Manual meal and dose logging keeps working. Pin the
+  dependency, and update it when this happens.
+- Glucose granularity is whatever LibreLinkUp reports, about 5 minutes. This is
+  not real-time data.
+- Long-term history accumulates from the first run, plus the optional HA seed.
+  The live API exposes about 12h through `graph` and 14 days through `logbook`.
+```
