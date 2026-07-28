@@ -578,6 +578,8 @@
       tr.querySelector(".save").onclick = () => create("foods", readFood(tr));
       tr.querySelector('[data-act="cancel"]').onclick = load;
       tbody.prepend(tr);
+      // the library scrolls, so the new top row can be off-screen; go to it
+      tbody.closest(".table-scroll").scrollTop = 0;
       return;
     }
     if (type === "insulin") {
