@@ -2,6 +2,10 @@
 // for insulin, composite meals (plates of foods), the food library, and saved
 // meal templates. Live auto-refresh, paused while anything is mid-edit.
 (function () {
+  // Swap the range picker's datetime-local inputs for 24-hour ones before any
+  // code reads or assigns their .value. Rows built later upgrade their own.
+  SD.timeFields();
+
   // Read a comma-joined list stashed in a <template> element. A <template>'s
   // text lives in its .content fragment, so el.textContent is empty — use
   // .content.textContent (falling back to textContent for non-template hosts).
@@ -352,17 +356,36 @@
     return tr;
   }
 
-  function editDose(tr, d) {
-    tr.innerHTML = `
-      <td><input type="datetime-local" value="${d.input}"></td>
-      <td><input type="number" step="0.5" min="0" value="${d.units}" style="width:70px"></td>
-      <td><select>${KINDS.map((k) => `<option ${k === d.kind ? "selected" : ""}>${k}</option>`).join("")}</select></td>
-      <td><input type="text" value="${attr(d.note)}"></td>
+  // Cells are addressed by class rather than by position: the 24-hour time field
+  // expands into several inputs, so querySelectorAll("input,select") order is no
+  // longer a reliable way to find them.
+  function doseEditCells(d) {
+    d = d || {};
+    return `
+      <td><input type="datetime-local" class="d-ts" value="${d.input || nowInput(0)}"></td>
+      <td><input type="number" class="d-units" step="0.5" min="0" value="${d.units ?? ""}"
+                 placeholder="units" style="width:70px"></td>
+      <td><select class="d-kind">${KINDS.map((k) => `<option ${k === d.kind ? "selected" : ""}>${k}</option>`).join("")}</select></td>
+      <td><input type="text" class="d-note" value="${attr(d.note)}" placeholder="note"></td>
       <td class="row-actions"><button class="icon-btn save">Save</button>
       <button class="icon-btn" data-act="cancel">Cancel</button></td>`;
-    const [ts, units, kind, note] = tr.querySelectorAll("input,select");
-    tr.querySelector(".save").onclick = () =>
-      patch("insulin", d.id, { ts: ts.value, units: parseFloat(units.value), kind: kind.value, note: note.value });
+  }
+  function readDose(tr) {
+    return {
+      ts: tr.querySelector(".d-ts").value,
+      units: tr.querySelector(".d-units").value,
+      kind: tr.querySelector(".d-kind").value,
+      note: tr.querySelector(".d-note").value,
+    };
+  }
+
+  function editDose(tr, d) {
+    tr.innerHTML = doseEditCells(d);
+    SD.timeFields(tr);
+    tr.querySelector(".save").onclick = () => {
+      const body = readDose(tr);
+      patch("insulin", d.id, { ...body, units: parseFloat(body.units) });
+    };
     tr.querySelector('[data-act="cancel"]').onclick = load;
   }
 
@@ -403,6 +426,7 @@
         <button type="button" class="icon-btn me-cancel">Cancel</button>
       </div></div></td>`;
     const root = tr.querySelector(".meal-editor");
+    SD.timeFields(root);
     const tbody = root.querySelector(".me-items tbody");
     (m ? m.items : []).forEach((it) => tbody.appendChild(itemRow(it)));
     if (!m) tbody.appendChild(itemRow({}));
@@ -638,16 +662,9 @@
     if (type === "insulin") {
       const tbody = document.querySelector("#insulin-table tbody");
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td><input type="datetime-local" value="${nowInput(0)}"></td>
-        <td><input type="number" step="0.5" min="0" placeholder="units" style="width:70px"></td>
-        <td><select>${KINDS.map((k) => `<option>${k}</option>`).join("")}</select></td>
-        <td><input type="text" placeholder="note"></td>
-        <td class="row-actions"><button class="icon-btn save">Save</button>
-        <button class="icon-btn" data-act="cancel">Cancel</button></td>`;
-      const [ts, units, kind, note] = tr.querySelectorAll("input,select");
-      tr.querySelector(".save").onclick = () =>
-        create("insulin", { ts: ts.value, units: units.value, kind: kind.value, note: note.value });
+      tr.innerHTML = doseEditCells(null);
+      SD.timeFields(tr);
+      tr.querySelector(".save").onclick = () => create("insulin", readDose(tr));
       tr.querySelector('[data-act="cancel"]').onclick = load;
       tbody.prepend(tr);
     }

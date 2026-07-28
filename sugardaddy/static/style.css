@@ -124,7 +124,14 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 @media (prefers-reduced-motion: reduce) { .toast { transition: opacity .2s ease; transform: translate(-50%, 0); } }
 
 .ts-row { display: flex; gap: 6px; align-items: stretch; }
-.ts-row input[type="datetime-local"] { flex: 1; min-width: 0; }
+/* The composite 24-hour time field stands in for the old datetime-local input. */
+.ts-row .tf { flex: 1; min-width: 0; }
+
+/* 24-hour time field: native date picker + explicit hh:mm boxes. */
+.tf { display: inline-flex; align-items: stretch; gap: 4px; }
+.tf .tf-date { flex: 1; min-width: 0; }
+.tf .tf-h, .tf .tf-m { width: 3.1em; text-align: center; flex: none; font-variant-numeric: tabular-nums; }
+.tf-sep { display: flex; align-items: center; color: var(--muted); }
 
 .combo { display: flex; gap: 6px; align-items: stretch; }
 .combo-field { position: relative; flex: 1; min-width: 0; }

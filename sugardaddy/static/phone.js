@@ -1,6 +1,10 @@
 // Phone UI: tab switching, a compact 24h glucose chart with live refresh, and
 // the meal "plate builder" (foods + counts, saved-meal templates).
 (function () {
+  // Swap the datetime-local inputs for 24-hour ones before anything reads them.
+  // The markup keeps type="datetime-local" so the form still works if JS fails.
+  SD.timeFields();
+
   // --- tabs ---
   const tabs = document.querySelectorAll(".tab");
   tabs.forEach((tab) => {
