@@ -241,6 +241,9 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
   background: var(--card); color: var(--text);
 }
 .range-presets button.active { border-color: var(--accent); background: var(--card-2); }
+/* Whether the window is following "now" or held still for investigation. */
+.range-live { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.range-live.frozen { color: var(--accent); }
 .phone-link { margin-left: auto; }
 
 .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }

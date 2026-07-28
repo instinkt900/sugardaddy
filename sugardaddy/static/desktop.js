@@ -87,7 +87,7 @@
       ctx.stroke();
       ctx.setLineDash([]);
       // Time label, kept inside the plot area.
-      const label = SD.stamp(scales.x.getValueForPixel(x));
+      const label = SD.tableStamp(scales.x.getValueForPixel(x));
       ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
       const pad = 5, w = ctx.measureText(label).width + pad * 2, h = 18;
       let bx = x + 6;
@@ -120,20 +120,45 @@
     return { from, to };
   }
 
+  const liveEl = document.getElementById("range-live");
+
+  // Which preset is active doubles as the live/frozen flag: with one selected the
+  // window tracks "now" and auto-refreshes, with a hand-typed range it holds
+  // still. Passing null means "custom range" and freezes refresh.
+  function setPreset(btn) {
+    document.querySelectorAll(".range-presets button")
+      .forEach((x) => x.classList.toggle("active", x === btn));
+    if (liveEl) {
+      liveEl.textContent = btn ? "live" : "frozen";
+      liveEl.classList.toggle("frozen", !btn);
+    }
+  }
+  function activePreset() {
+    return document.querySelector(".range-presets button.active");
+  }
+
   document.querySelectorAll(".range-presets button").forEach((b) => {
     b.addEventListener("click", () => {
-      document.querySelectorAll(".range-presets button").forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
+      setPreset(b);
       fromEl.value = nowInput(parseInt(b.dataset.hours, 10));
       toEl.value = nowInput(0);
       load();
     });
   });
-  fromEl.addEventListener("change", load);
-  toEl.addEventListener("change", load);
+  // Typing a range detaches from the presets. Without this the last-clicked
+  // preset stayed active and autoRefresh() wrote the window straight back.
+  const manualRange = () => { setPreset(null); load(); };
+  fromEl.addEventListener("change", manualRange);
+  toEl.addEventListener("change", manualRange);
 
   // ---- load everything ----
+  // Editing `from` then `to` fires two loads back to back, and their responses
+  // can land out of order — leaving the chart on the earlier request's window.
+  // Only the newest load is allowed to render; stale ones are dropped.
+  let loadSeq = 0;
+
   function load() {
+    const seq = ++loadSeq;
     const { from, to } = rangeEpochs();
     const qs = `?from=${from}&to=${to}`;
     Promise.all([
@@ -143,6 +168,7 @@
       fetch("/api/foods").then((r) => r.json()),
       fetch("/api/meal-templates").then((r) => r.json()),
     ]).then(([timeline, entries, stats, foods, templates]) => {
+      if (seq !== loadSeq) return; // superseded by a newer load
       FOODS = foods;
       populateFoodsDatalist();
       renderChart(timeline);
@@ -154,45 +180,71 @@
   }
 
   // ---- chart ----
-  function renderChart(data) {
-    const ctx = document.getElementById("main-chart");
-    if (typeof Chart === "undefined") return;
-    const g = data.glucose.map((p) => ({ x: p.t, y: p.v }));
-    const iob = (data.iob || []).map((p) => ({ x: p.t, y: p.v }));
-    const activity = (data.activity || []).map((p) => ({ x: p.t, y: p.v }));
-    const ys = g.map((p) => p.y);
+  // The most recent timeline payload. The chart's own callbacks read from this
+  // rather than closing over an argument, so they stay correct across the
+  // in-place updates below instead of being frozen at build time.
+  let chartPayload = null;
+
+  // Dose/meal markers sit just above the bottom of the glucose range, so their
+  // y positions move with the data and have to be recomputed each refresh.
+  function chartSeries(data) {
+    const glucose = data.glucose.map((p) => ({ x: p.t, y: p.v }));
+    const ys = glucose.map((p) => p.y);
     const yMin = ys.length ? Math.min(...ys) : 0;
     const yMax = ys.length ? Math.max(...ys) : 10;
     const doseY = yMin;
     const mealY = yMin + (yMax - yMin) * 0.06;
+    return {
+      glucose,
+      iob: (data.iob || []).map((p) => ({ x: p.t, y: p.v })),
+      activity: (data.activity || []).map((p) => ({ x: p.t, y: p.v })),
+      doses: data.doses.map((d) => ({ x: d.t, y: doseY, kind: d.kind, label: `${d.units}u ${d.kind}` })),
+      meals: data.meals.map((m) => ({
+        x: m.t, y: mealY,
+        label: m.label + (m.total_carbs != null ? ` (${m.total_carbs}g)` : ""),
+      })),
+    };
+  }
 
-    const doses = data.doses.map((d) => ({ x: d.t, y: doseY, kind: d.kind, label: `${d.units}u ${d.kind}` }));
-    const meals = data.meals.map((m) => ({
-      x: m.t, y: mealY,
-      label: m.label + (m.total_carbs != null ? ` (${m.total_carbs}g)` : ""),
-    }));
+  function renderChart(data) {
+    const ctx = document.getElementById("main-chart");
+    if (typeof Chart === "undefined") return;
+    chartPayload = data;
+    const s = chartSeries(data);
 
-    if (chart) chart.destroy();
+    // Once built, refresh the existing chart rather than replacing it. Chart.js
+    // keeps per-dataset legend visibility on the instance, so the old
+    // destroy()/new Chart() pair silently switched every hidden series back on
+    // at each auto-refresh — which made a chart impossible to read for long.
+    if (chart) {
+      const sets = chart.data.datasets;
+      [s.glucose, s.doses, s.meals, s.iob, s.activity].forEach((d, i) => { sets[i].data = d; });
+      chart.options.scales.x.min = data.from;
+      chart.options.scales.x.max = data.to;
+      chart.update();
+      return;
+    }
+
     chart = new Chart(ctx, {
       data: {
         datasets: [
-          { type: "line", label: "Glucose", data: g, borderColor: "#4f8cff",
+          { type: "line", label: "Glucose", data: s.glucose, borderColor: "#4f8cff",
             borderWidth: 2, pointRadius: 0, tension: 0.3, parsing: false },
-          { type: "scatter", label: "Insulin", data: doses,
+          { type: "scatter", label: "Insulin", data: s.doses,
             borderColor: (c) => SD.doseColor(c.raw && c.raw.kind),
             backgroundColor: (c) => SD.doseColor(c.raw && c.raw.kind),
             pointStyle: "triangle", radius: 7, parsing: false },
-          { type: "scatter", label: "Meal", data: meals, borderColor: "#ffb020",
+          { type: "scatter", label: "Meal", data: s.meals, borderColor: "#ffb020",
             backgroundColor: "#ffb020", pointStyle: "rectRot", radius: 7, parsing: false },
           // Active-insulin (IOB) curve on its own right-hand axis; drawn behind
           // the glucose line (order:1) and translucent so it never hides it.
-          { type: "line", label: "Insulin active (u)", data: iob, yAxisID: "y1",
+          { type: "line", label: "Insulin active (u)", data: s.iob, yAxisID: "y1",
             borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.15)",
             borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, parsing: false, order: 1 },
           // Insulin action *rate* (derivative of IOB) on a hidden auto-scaled
           // axis — dashed line, no fill, so it reads as the "how hard it's working
           // now" companion to the filled on-board area. Shape/timing is the point.
-          { type: "line", label: "Insulin activity (u/hr)", data: activity, yAxisID: "y2",
+          { type: "line", label: "Insulin activity (u/hr)", data: s.activity, yAxisID: "y2",
             borderColor: "#2dd4bf", borderWidth: 1.5, borderDash: [5, 4],
             pointRadius: 0, tension: 0.3, fill: false, parsing: false, order: 1 },
         ],
@@ -206,7 +258,7 @@
             if (c.raw.label) return c.raw.label;
             if (c.dataset.yAxisID === "y1") return `${c.parsed.y} u active`;
             if (c.dataset.yAxisID === "y2") return `${c.parsed.y} u/hr acting`;
-            return `${c.parsed.y} ${data.units}`;
+            return `${c.parsed.y} ${chartPayload.units}`;
           } } },
         },
         scales: {
@@ -214,7 +266,8 @@
           // autoscale to the data, so a stale last reading or an ingest gap made
           // the plotted lines shrink away from the (fixed) chart area edges.
           x: { type: "linear", min: data.from, max: data.to,
-               ticks: { color: "#8b90a0", maxTicksLimit: 10, callback: (v) => SD.stamp(v) },
+               ticks: { color: "#8b90a0", maxTicksLimit: 10,
+                        callback: (v) => SD.axisStamp(v, chartPayload.to - chartPayload.from) },
                grid: { color: "#2c303c" } },
           y: { ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
                title: { display: true, text: data.units, color: "#8b90a0" } },
@@ -271,7 +324,7 @@
            <td class="ref-col ${partial ? "ref-partial" : p.ref_delta_units > 0 ? "ref-over" : p.ref_delta_units < 0 ? "ref-under" : ""}"
                title="${esc(why)}">
              ${p.ref_delta_units > 0 ? "+" : ""}${p.ref_delta_units}${partial ? "*" : ""}</td>`;
-      tr.innerHTML = `<td>${SD.stamp(p.ts_utc * 1000)}</td><td>${esc(p.description) || "(meal)"}</td>
+      tr.innerHTML = `<td>${p.local}</td><td>${esc(p.description) || "(meal)"}</td>
         <td>${p.carbs_g ?? ""}</td><td>${dose(p.bolus_units)}</td><td>${dose(p.iob_start_units)}</td>${ref}
         <td>${p.start_display}</td><td>${p.peak_display}</td>
         <td>${p.peak_delta_display}</td><td>${p.minutes_to_peak}m</td><td>${p.end_display}</td>`;
@@ -641,18 +694,20 @@
   }
   function autoRefresh() {
     if (document.hidden || isEditing()) return;
-    const preset = document.querySelector(".range-presets button.active");
-    if (preset) {
-      fromEl.value = nowInput(parseInt(preset.dataset.hours, 10));
-      toEl.value = nowInput(0);
-    }
+    const preset = activePreset();
+    // A hand-picked window is frozen. Nothing new can land inside a fixed
+    // historical range, and repainting under the user is the whole problem —
+    // clicking a preset re-arms live mode. Explicit edits still call load().
+    if (!preset) return;
+    fromEl.value = nowInput(parseInt(preset.dataset.hours, 10));
+    toEl.value = nowInput(0);
     load();
   }
 
   // ---- init ----
   fromEl.value = nowInput(24);
   toEl.value = nowInput(0);
-  document.querySelector('.range-presets button[data-hours="24"]').classList.add("active");
+  setPreset(document.querySelector('.range-presets button[data-hours="24"]'));
   window.addEventListener("load", load);
   setInterval(autoRefresh, REFRESH_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) autoRefresh(); });

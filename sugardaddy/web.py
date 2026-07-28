@@ -146,7 +146,9 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             dt = dt.replace(tzinfo=tz)
         return int(dt.timestamp())
 
-    def local_str(ts: int, fmt: str = "%Y-%m-%d %H:%M") -> str:
+    def local_str(ts: int, fmt: str = "%d/%m/%y %H:%M") -> str:
+        """Display stamp for tables/lists — day-first, matching the AU locale the
+        app is set up for. Distinct from local_input(), which must stay ISO."""
         return datetime.fromtimestamp(ts, tz).strftime(fmt)
 
     def local_input(ts: int) -> str:
@@ -414,22 +416,25 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         # the dose window past the display range's start.
         doses = db.doses_between(start - cfg.insulin.dia_minutes * 60, end)
         summary = summarize(readings, cfg.target_low_mgdl, cfg.target_high_mgdl, cfg.web.units)
-        return {
-            "summary": summary.as_dict(),
-            "post_meal": post_meal_responses(
-                readings,
-                meals,
-                cfg.web.units,
-                doses,
-                dia_minutes=cfg.insulin.dia_minutes,
-                peak_minutes=cfg.insulin.peak_minutes,
-                # Experimental bolus reference — absent from the payload unless an
-                # ISF is configured, which is what keeps the UI columns hidden.
-                isf_mgdl=cfg.isf_mgdl,
-                icr=cfg.insulin.icr,
-                target_mgdl=cfg.bolus_target_mgdl,
-            ),
-        }
+        post_meal = post_meal_responses(
+            readings,
+            meals,
+            cfg.web.units,
+            doses,
+            dia_minutes=cfg.insulin.dia_minutes,
+            peak_minutes=cfg.insulin.peak_minutes,
+            # Experimental bolus reference — absent from the payload unless an
+            # ISF is configured, which is what keeps the UI columns hidden.
+            isf_mgdl=cfg.isf_mgdl,
+            icr=cfg.insulin.icr,
+            target_mgdl=cfg.bolus_target_mgdl,
+        )
+        # Stamp each row here rather than in analysis.py (which stays pure and
+        # tz-free), so this table reads in the *configured* timezone like the
+        # insulin/meal tables instead of whatever the browser happens to be in.
+        for row in post_meal:
+            row["local"] = local_str(row["ts_utc"])
+        return {"summary": summary.as_dict(), "post_meal": post_meal}
 
     # --- create (phone HTMX + desktop) ----------------------------------
 
