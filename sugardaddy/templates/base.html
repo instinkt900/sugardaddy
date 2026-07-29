@@ -12,6 +12,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Sugar Daddy">
+  <!-- Browser tab icon. The .ico carries 16/32/48 for older browsers; the PNG is
+       what modern ones pick. Both are the app icon with the drop scaled up and
+       the padding dropped, which the installed-app icons can afford but a 16px
+       tab cannot. -->
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/chart.umd.min.js" defer></script>

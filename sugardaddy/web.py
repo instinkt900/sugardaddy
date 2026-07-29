@@ -351,6 +351,15 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             headers={"Cache-Control": "no-cache"},
         )
 
+    @app.get("/favicon.ico")
+    def favicon():
+        # Browsers request /favicon.ico from the root on their own, whatever the
+        # <link> tags say, so answer there as well as from /static/.
+        return FileResponse(
+            _HERE / "static" / "icons" / "favicon.ico",
+            media_type="image/x-icon",
+        )
+
     @app.get("/api/current")
     def api_current():
         return current_context()
