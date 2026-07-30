@@ -22,7 +22,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from sugardaddy import __version__, notify
-from sugardaddy.analysis import daily_intake, post_meal_responses, summarize
+from sugardaddy.analysis import (
+    daily_intake,
+    day_window_start,
+    post_meal_responses,
+    summarize,
+)
 from sugardaddy.config import Config, load_config
 from sugardaddy.iob import active_activity, active_iob, activity_phase, is_rapid
 from sugardaddy.constants import INSULIN_KINDS, MEAL_TYPES, to_display, trend_arrow
@@ -450,15 +455,34 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         # insulin/meal tables instead of whatever the browser happens to be in.
         for row in post_meal:
             row["local"] = local_str(row["ts_utc"])
-        # Per-day intake rollup. Doses are narrowed back to the display window:
-        # the widened set above exists only so IOB is right at the left edge, and
-        # counting those earlier doses would inflate the first day's total.
-        daily = daily_intake(meals, [d for d in doses if start <= d.ts_utc <= end], tz)
-        for row in daily:
+        return {"summary": summary.as_dict(), "post_meal": post_meal}
+
+    @app.get("/api/daily")
+    def api_daily(request: Request):
+        """Per-day intake on its own whole-day window, in local days.
+
+        Deliberately *not* driven by the chart's range picker. That window is an
+        arbitrary span ending at now, so it cuts its oldest day in half — and half
+        a day of food in a column next to whole days doesn't read as clipped, it
+        reads as a light day. Here the window always starts at local midnight, so
+        every row is a whole day except today, which is flagged as still running
+        and left out of the average.
+        """
+        try:
+            days = int(request.query_params.get("days", 7))
+        except ValueError:
+            days = 7
+        days = max(1, min(days, 365))  # a year of rows is already unreadable
+        now = now_epoch()
+        start = day_window_start(now, tz, days)
+        rows = daily_intake(db.meals_between(start, now), db.doses_between(start, now), tz)
+        today = datetime.fromtimestamp(now, tz).strftime("%Y-%m-%d")
+        for row in rows:
             # Day-first label, stamped here for the same reason as `local` above —
             # analysis.py stays free of display formatting.
             row["label"] = datetime.strptime(row["day"], "%Y-%m-%d").strftime("%a %d/%m")
-        return {"summary": summary.as_dict(), "post_meal": post_meal, "daily": daily}
+            row["in_progress"] = row["day"] == today
+        return {"days": days, "from": start * 1000, "to": now * 1000, "rows": rows}
 
     # --- create (phone HTMX + desktop) ----------------------------------
 

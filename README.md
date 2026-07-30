@@ -44,7 +44,10 @@ Everything runs on your own infrastructure.
 - **Daily intake table** (desktop) — carbs, calories, and mealtime insulin per
   day, with a per-day average. Basal is excluded from the insulin total, because
   one long-acting dose would hide the mealtime doses. A `*` marks a day where not
-  every meal carries the figure, so the total is a floor and not a fact.
+  every meal carries the figure, so the total is a floor and not a fact. This
+  table keeps **its own range** (3d, 7d, 30d, or a day count you type), separate
+  from the chart. Days always start at local midnight, so no row is a part day.
+  Today is tagged **so far** and stays out of the average.
 - **Basal reminder** — the app can send your phone one notification. It tells you
   when no **basal** dose has been logged for more than a day. It reports a gap in
   the log. It never tells you to take a dose. This feature is off by default. See

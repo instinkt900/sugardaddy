@@ -288,6 +288,17 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 /* the last row's border is normally dropped; keep it when it can be scrolled
    away from the bottom edge, so the list doesn't look like it ends there */
 .table-scroll .data-table tr:last-child td { border-bottom: 1px solid var(--border); }
+/* The daily rollup's own range control. It is separate from the header's range
+   picker on purpose: that one can end mid-day, which would put a part-day row
+   beside whole ones. Smaller than the header presets so it reads as a panel
+   control rather than a second global one. */
+.day-picker { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.day-presets button { padding: 5px 10px; font-size: 13px; }
+/* flex-direction: row overrides the global column layout for `label`, the same
+   way .range-picker label does — otherwise "Days" stacks above its input. */
+.day-custom { display: flex; flex-direction: row; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.day-custom input { width: 62px; padding: 5px 6px; font-size: 13px; }
+
 /* Summary row (the daily rollup's average). thead's th sticks to the top of the
    scroll box; this one belongs at the bottom, where it stays in view while the
    days scroll past — hence cancelling `top` before setting `bottom`. */

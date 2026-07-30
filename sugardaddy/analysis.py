@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
-from datetime import datetime, timezone, tzinfo
+from datetime import datetime, timedelta, timezone, tzinfo
 
 from sugardaddy.bolus import bolus_reference, describe
 from sugardaddy.constants import mgdl_to_mmol, to_display
@@ -327,6 +327,23 @@ def insulin_summary(doses: list[InsulinDose]) -> dict:
         "total_units": round(sum(d.units for d in doses), 1),
         "by_kind": by_kind,
     }
+
+
+def day_window_start(now: int, tz: tzinfo, days: int) -> int:
+    """Epoch of the local midnight that opens a window of the last ``days`` days.
+
+    A rolling ``now - days × 86400`` window slices its oldest day in half, which
+    makes a per-day table lie: a part-day of food lands in a column beside whole
+    ones and reads as a light day rather than a clipped one. Snapping the start to
+    local midnight is what makes every row a whole day — today excepted, since it
+    is still in progress, which the table has to say out loud rather than hide.
+
+    ``days = 1`` means "today so far". DST-safe: it steps back over calendar dates
+    and rebuilds midnight in ``tz`` instead of subtracting a fixed span of seconds.
+    """
+    today = datetime.fromtimestamp(now, tz).date()
+    first = today - timedelta(days=max(1, days) - 1)
+    return int(datetime(first.year, first.month, first.day, tzinfo=tz).timestamp())
 
 
 def daily_intake(meals: list[Meal], doses: list[InsulinDose], tz: tzinfo) -> list[dict]:

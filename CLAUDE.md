@@ -47,8 +47,8 @@ sugardaddy/            Python package
   backfill.py          one-shot history seed from Home Assistant REST
   analysis.py          PURE retrospective functions (summarize, post_meal_responses,
                        variability, daily_breakdown, hourly_profile, low_episodes,
-                       insulin_summary, daily_intake, basal_status, carb_coverage)
-                       — no I/O, no clock, no config
+                       insulin_summary, daily_intake, day_window_start,
+                       basal_status, carb_coverage) — no I/O, no clock, no config
   report.py            `report` command: window + tz resolution, calls analysis, text/JSON
   templates/           base.html, phone/index.html, desktop/dashboard.html, partials/recent.html
   static/              style.css, phone.js, desktop.js, common.js, sw.js, vendored libs, icons/
@@ -75,6 +75,9 @@ config.example.toml    the only tracked config; real config.toml is gitignored
 
 - Pages: `GET /` (phone), `GET /desktop`, `GET /healthz`, `GET /manifest.webmanifest`, `GET /sw.js`
 - Read APIs: `GET /api/{current,timeline,entries,stats,recent,foods,meal-templates}`
+  plus `GET /api/daily?days=N` — the per-day intake rollup, on its OWN
+  midnight-aligned window (deliberately not the chart's range, which can end
+  mid-day and would show a part day beside whole ones)
 - Write APIs: `POST /api/{insulin,meal,foods,meal-templates}`;
   `PATCH`/`DELETE /api/{insulin,meal,foods,meal-templates}/{id}`
 - Push: `GET /api/push/key`, `POST /api/push/{subscribe,unsubscribe,test}`

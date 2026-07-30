@@ -129,8 +129,13 @@
   // Which preset is active doubles as the live/frozen flag: with one selected the
   // window tracks "now" and auto-refreshes, with a hand-typed range it holds
   // still. Passing null means "custom range" and freezes refresh.
+  // Scoped to .range-picker throughout: the daily-intake panel reuses the
+  // .range-presets look for its own day picker, and an unscoped selector would
+  // wire the header's handler onto those buttons too — clicking "3d" there set the
+  // chart window from a non-existent data-hours and blanked this picker's
+  // highlight.
   function setPreset(btn) {
-    document.querySelectorAll(".range-presets button")
+    document.querySelectorAll(".range-picker .range-presets button")
       .forEach((x) => x.classList.toggle("active", x === btn));
     if (liveEl) {
       liveEl.textContent = btn ? "live" : "frozen";
@@ -138,10 +143,10 @@
     }
   }
   function activePreset() {
-    return document.querySelector(".range-presets button.active");
+    return document.querySelector(".range-picker .range-presets button.active");
   }
 
-  document.querySelectorAll(".range-presets button").forEach((b) => {
+  document.querySelectorAll(".range-picker .range-presets button").forEach((b) => {
     b.addEventListener("click", () => {
       setPreset(b);
       fromEl.value = nowInput(parseInt(b.dataset.hours, 10));
@@ -180,6 +185,9 @@
       renderStats(stats);
       renderFoods(foods);
       renderTemplates(templates);
+      // Its own window, but still refreshed here so an edit or a new entry shows
+      // up in the rollup without needing the day picker touched.
+      loadDaily();
     });
   }
 
@@ -345,14 +353,52 @@
         <td>${p.peak_delta_display}</td><td>${p.minutes_to_peak}m</td><td>${p.end_display}</td>`;
       tb.appendChild(tr);
     });
-
-    renderDaily(s.daily);
   }
 
   // ---- daily intake rollup ----
   // Deliberately plain: what went in each day and how much mealtime insulin met
   // it. Basal is excluded upstream (see analysis.daily_intake) because one nightly
   // long-acting dose would dwarf the boluses this sits beside.
+  //
+  // This panel keeps its OWN range, independent of the chart's picker. Sharing it
+  // meant a 24h window sliced the oldest day in half and the table showed a
+  // fraction of a day's intake beside whole ones — indistinguishable from a light
+  // day. /api/daily always starts at local midnight instead.
+  let dailyDays = 7;
+
+  function loadDaily() {
+    fetch(`/api/daily?days=${dailyDays}`)
+      .then((r) => r.json())
+      .then((d) => renderDaily(d.rows))
+      .catch(() => {});
+  }
+
+  function setDailyDays(n) {
+    // Clamped to the same bounds the endpoint enforces, and written back to the
+    // field: typing 999 and getting 365 days of rows while the box still reads 999
+    // is the kind of small lie that makes you distrust the whole table.
+    // `|| 7` would swallow a typed 0 as "no value"; only a genuinely unparseable
+    // field (cleared) falls back, and 0 clamps to 1 the way the endpoint does.
+    const parsed = parseInt(n, 10);
+    dailyDays = Number.isNaN(parsed) ? 7 : Math.max(1, Math.min(parsed, 365));
+    document.querySelectorAll(".day-presets button").forEach((b) =>
+      b.classList.toggle("active", parseInt(b.dataset.days, 10) === dailyDays)
+    );
+    const input = document.getElementById("daily-days");
+    if (input) input.value = dailyDays;
+    loadDaily();
+  }
+
+  document.querySelectorAll(".day-presets button").forEach((b) => {
+    b.addEventListener("click", () => setDailyDays(b.dataset.days));
+  });
+  const dailyInput = document.getElementById("daily-days");
+  if (dailyInput) {
+    // "change", not "input": re-fetching per keystroke would request 3 days on the
+    // way to typing 30.
+    dailyInput.addEventListener("change", () => setDailyDays(dailyInput.value));
+  }
+
   function renderDaily(rows) {
     const tb = document.querySelector("#daily-table tbody");
     if (!tb) return;
@@ -369,8 +415,11 @@
 
     list.forEach((d) => {
       const tr = document.createElement("tr");
+      // Today is a day in progress, not a short day. Say so on the row and keep it
+      // out of the average, or every mean reads low until bedtime.
+      const today = d.in_progress ? ` <span class="tag">so far</span>` : "";
       tr.innerHTML =
-        `<td>${esc(d.label || d.day)}</td>` +
+        `<td>${esc(d.label || d.day)}${today}</td>` +
         `<td>${cell(d.carbs_g, " g", d.carbs_complete, "a carb count")}</td>` +
         `<td>${cell(d.calories, " kcal", d.calories_complete, "a calorie count")}</td>` +
         `<td>${cell(d.insulin_units, "u", true, "")}</td>` +
@@ -379,19 +428,24 @@
       tb.appendChild(tr);
     });
 
-    // Mean per logged day, not per calendar day in the range: a day nothing was
-    // logged on is a gap in the record, and averaging it in as a zero would read
-    // as a fast that never happened.
+    // Mean over *complete logged* days only. Two exclusions, for the same reason:
+    // today is still running, and a day nothing was logged on is a gap in the
+    // record — averaging either in would read as a fast that never happened.
     const foot = document.getElementById("daily-avg");
     if (!foot) return;
     if (!list.length) {
       foot.innerHTML = `<th colspan="6" class="muted">Nothing logged in this range.</th>`;
       return;
     }
-    const mean = (key) => list.reduce((a, d) => a + (d[key] || 0), 0) / list.length;
-    const every = (key) => list.every((d) => d[key]);
+    const full = list.filter((d) => !d.in_progress);
+    if (!full.length) {
+      foot.innerHTML = `<th colspan="6" class="muted">Today is still in progress — no complete day to average yet.</th>`;
+      return;
+    }
+    const mean = (key) => full.reduce((a, d) => a + (d[key] || 0), 0) / full.length;
+    const every = (key) => full.every((d) => d[key]);
     foot.innerHTML =
-      `<th>Average / day <span class="muted">(${list.length} day${list.length === 1 ? "" : "s"})</span></th>` +
+      `<th>Average / day <span class="muted">(${full.length} full day${full.length === 1 ? "" : "s"})</span></th>` +
       `<th>${mean("carbs_g").toFixed(0)} g${mark(every("carbs_complete"), "a carb count")}</th>` +
       `<th>${mean("calories").toFixed(0)} kcal${mark(every("calories_complete"), "a calorie count")}</th>` +
       `<th>${mean("insulin_units").toFixed(1)}u</th>` +
@@ -787,7 +841,7 @@
   // ---- init ----
   fromEl.value = nowInput(24);
   toEl.value = nowInput(0);
-  setPreset(document.querySelector('.range-presets button[data-hours="24"]'));
+  setPreset(document.querySelector('.range-picker .range-presets button[data-hours="24"]'));
   window.addEventListener("load", load);
   setInterval(autoRefresh, REFRESH_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) autoRefresh(); });

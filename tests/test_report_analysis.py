@@ -109,6 +109,35 @@ def test_carb_coverage():
     assert analysis.carb_coverage([])["percent"] == 0.0
 
 
+def test_day_window_start_snaps_to_local_midnight():
+    from datetime import datetime, timedelta
+
+    plus10 = timezone(timedelta(hours=10))
+    # T0 is 2026-07-23 10:00 in +10. A 3-day window must open at midnight on the
+    # 21st, not 72 h before now — otherwise the oldest row is a part-day.
+    start = analysis.day_window_start(T0, plus10, 3)
+    assert datetime.fromtimestamp(start, plus10).isoformat() == "2026-07-21T00:00:00+10:00"
+    # days=1 is "today so far", opening at this morning's midnight.
+    one = analysis.day_window_start(T0, plus10, 1)
+    assert datetime.fromtimestamp(one, plus10).isoformat() == "2026-07-23T00:00:00+10:00"
+    assert one > T0 - 86400  # i.e. NOT a rolling 24h window
+
+
+def test_day_window_start_survives_dst():
+    # Sydney leaves DST at 03:00 on 2026-04-05 (+11 -> +10), making that day 25 h
+    # long. Stepping back over calendar dates has to land on real midnights; a
+    # fixed 86400 multiple would drift an hour and pull in part of the day before.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    syd = ZoneInfo("Australia/Sydney")
+    now = int(datetime(2026, 4, 6, 12, 0, tzinfo=syd).timestamp())  # day after
+    start = analysis.day_window_start(now, syd, 3)
+    assert datetime.fromtimestamp(start, syd).isoformat() == "2026-04-04T00:00:00+11:00"
+    naive = now - 3 * 86400  # what a rolling window would have given
+    assert start != naive and datetime.fromtimestamp(naive, syd).hour == 13
+
+
 def test_daily_intake_excludes_basal():
     # The whole point of the column: a big nightly basal must not land in the same
     # total as the mealtime doses it sits beside.

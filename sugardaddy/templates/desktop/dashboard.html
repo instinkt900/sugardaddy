@@ -59,7 +59,17 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2>Daily intake <span class="muted" style="font-weight:400;font-size:13px">— one row per day in the selected range; insulin is bolus + correction only, basal excluded</span></h2>
+      <h2>Daily intake <span class="muted" style="font-weight:400;font-size:13px">— whole local days, on its own range; insulin is bolus + correction only, basal excluded</span></h2>
+      <div class="day-picker">
+        <div class="range-presets day-presets">
+          <button data-days="3">3d</button>
+          <button data-days="7" class="active">7d</button>
+          <button data-days="30">30d</button>
+        </div>
+        <label class="day-custom">Days
+          <input type="number" id="daily-days" min="1" max="365" step="1" value="7" aria-label="Days to summarize">
+        </label>
+      </div>
     </div>
     <div class="table-scroll">
       <table class="data-table" id="daily-table">
