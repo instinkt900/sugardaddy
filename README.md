@@ -400,6 +400,13 @@ export only makes sense as a one-off seed.
 
 ## Notes and limitations
 
+- **The notification badge** (`sugardaddy/static/icons/icon-badge-96.png`) is the
+  small icon Android draws in the status bar. Android keeps only the alpha
+  channel and paints the result white, so this file is the bare droplet on
+  transparency. A full-colour icon there shows as a plain white square. Rebuild it
+  from the app icon with `python tools/make_badge_icon.py` (needs
+  `pip install pillow`).
+
 - **LibreLinkUp is unofficial and reverse-engineered.** Abbott occasionally
   bumps a required app-version header, which pauses ingestion until a new
   `pylibrelinkup` ships. Manual meal and dose logging keeps working. Pin the

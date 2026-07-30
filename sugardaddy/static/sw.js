@@ -9,7 +9,7 @@
 // It also receives Web Push messages: the server signs and encrypts them itself
 // (see sugardaddy/notify.py), so the payload arriving here has only been relayed
 // by the browser's push service, never read by it.
-const CACHE = "sugardaddy-v3";
+const CACHE = "sugardaddy-v4";
 const SHELL = [
   "/", "/desktop",
   "/manifest.webmanifest",
@@ -21,6 +21,7 @@ const SHELL = [
   "/static/chart.umd.min.js",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
+  "/static/icons/icon-badge-96.png",
 ];
 
 self.addEventListener("install", (e) => {
@@ -49,6 +50,11 @@ self.addEventListener("push", (e) => {
     self.registration.showNotification(d.title || "Sugar Daddy", {
       body: d.body || "Something needs logging.",
       icon: "/static/icons/icon-192.png",
+      // Android keeps only this image's ALPHA for the status bar and paints the
+      // result white, so it has to be the bare droplet on transparency — point it
+      // at the full-colour icon and you get a featureless white square. Generated
+      // from icon-512.png by tools/make_badge_icon.py.
+      badge: "/static/icons/icon-badge-96.png",
       tag: d.tag || "sugardaddy",       // replaces the previous one instead of stacking
       renotify: d.renotify !== false,   // reposts replace quietly; only the first alerts
       silent: d.silent === true,
