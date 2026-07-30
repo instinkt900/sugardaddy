@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from sugardaddy import __version__, notify
-from sugardaddy.analysis import post_meal_responses, summarize
+from sugardaddy.analysis import daily_intake, post_meal_responses, summarize
 from sugardaddy.config import Config, load_config
 from sugardaddy.iob import active_activity, active_iob, activity_phase, is_rapid
 from sugardaddy.constants import INSULIN_KINDS, MEAL_TYPES, to_display, trend_arrow
@@ -450,7 +450,15 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         # insulin/meal tables instead of whatever the browser happens to be in.
         for row in post_meal:
             row["local"] = local_str(row["ts_utc"])
-        return {"summary": summary.as_dict(), "post_meal": post_meal}
+        # Per-day intake rollup. Doses are narrowed back to the display window:
+        # the widened set above exists only so IOB is right at the left edge, and
+        # counting those earlier doses would inflate the first day's total.
+        daily = daily_intake(meals, [d for d in doses if start <= d.ts_utc <= end], tz)
+        for row in daily:
+            # Day-first label, stamped here for the same reason as `local` above —
+            # analysis.py stays free of display formatting.
+            row["label"] = datetime.strptime(row["day"], "%Y-%m-%d").strftime("%a %d/%m")
+        return {"summary": summary.as_dict(), "post_meal": post_meal, "daily": daily}
 
     # --- create (phone HTMX + desktop) ----------------------------------
 

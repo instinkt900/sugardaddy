@@ -288,6 +288,20 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 /* the last row's border is normally dropped; keep it when it can be scrolled
    away from the bottom edge, so the list doesn't look like it ends there */
 .table-scroll .data-table tr:last-child td { border-bottom: 1px solid var(--border); }
+/* Summary row (the daily rollup's average). thead's th sticks to the top of the
+   scroll box; this one belongs at the bottom, where it stays in view while the
+   days scroll past — hence cancelling `top` before setting `bottom`. */
+.data-table tfoot th {
+  color: var(--text); text-transform: none; letter-spacing: 0; font-size: 13px;
+  border-top: 1px solid var(--border); border-bottom: none;
+}
+.table-scroll .data-table tfoot th {
+  position: sticky; top: auto; bottom: 0;
+  background: var(--card); box-shadow: inset 0 1px 0 var(--border);
+}
+/* Marks a figure built from only some of its inputs — see renderDaily(). */
+.partial { color: var(--high); cursor: help; }
+
 /* stay a table-cell (not display:flex) so it keeps row height + vertical-align
    when sibling cells wrap to two lines; space the buttons inline instead */
 .row-actions { white-space: nowrap; vertical-align: middle; }

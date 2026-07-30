@@ -59,6 +59,19 @@
 
   <section class="panel">
     <div class="panel-head">
+      <h2>Daily intake <span class="muted" style="font-weight:400;font-size:13px">— one row per day in the selected range; insulin is bolus + correction only, basal excluded</span></h2>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table" id="daily-table">
+        <thead><tr><th>Day</th><th>Carbs</th><th>Calories</th><th>Insulin</th><th>Meals</th><th>Doses</th></tr></thead>
+        <tbody></tbody>
+        <tfoot><tr id="daily-avg"></tr></tfoot>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
       <h2>Foods <span class="muted" style="font-weight:400;font-size:13px">— library used to build meals; edits never change history</span></h2>
       <button class="add-btn" data-add="food">+ Add</button>
     </div>

@@ -109,6 +109,65 @@ def test_carb_coverage():
     assert analysis.carb_coverage([])["percent"] == 0.0
 
 
+def test_daily_intake_excludes_basal():
+    # The whole point of the column: a big nightly basal must not land in the same
+    # total as the mealtime doses it sits beside.
+    doses = [
+        InsulinDose(ts_utc=T0, units=6.0, kind="bolus"),
+        InsulinDose(ts_utc=T0 + 60, units=2.5, kind="correction"),
+        InsulinDose(ts_utc=T0 + 120, units=36.0, kind="basal"),
+        InsulinDose(ts_utc=T0 + 180, units=1.5, kind=""),  # unset kind = bolus
+    ]
+    day = analysis.daily_intake([], doses, timezone.utc)[0]
+    assert day["insulin_units"] == 10.0, day
+    assert day["dose_count"] == 3, day
+
+
+def test_daily_intake_totals_and_partial_flags():
+    full = Meal(ts_utc=T0, items=[MealItem(name="toast", carbs_g=20.0, calories=150.0, count=2)])
+    # Carbs logged, calories not: the carb total stays trustworthy, calories don't.
+    carbs_only = Meal(ts_utc=T0 + 60, items=[MealItem(name="juice", carbs_g=30.0, count=1)])
+    day = analysis.daily_intake([full, carbs_only], [], timezone.utc)[0]
+    assert day["carbs_g"] == 70.0, day       # 20x2 + 30
+    assert day["calories"] == 300, day       # 150x2, juice contributes nothing
+    assert day["carbs_complete"] is True, day
+    assert day["calories_complete"] is False, day
+    assert day["meal_count"] == 2, day
+
+
+def test_daily_intake_partial_plate_still_counts():
+    # One item carbed, one not. The figure is a floor, not a total — it is kept
+    # (what was logged is real) but must not claim to be complete.
+    plate = Meal(ts_utc=T0, items=[
+        MealItem(name="rice", carbs_g=45.0, count=1),
+        MealItem(name="curry", count=1),
+    ])
+    day = analysis.daily_intake([plate], [], timezone.utc)[0]
+    assert day["carbs_g"] == 45.0 and day["carbs_complete"] is False, day
+
+
+def test_daily_intake_splits_on_local_days():
+    from datetime import timedelta
+
+    plus10 = timezone(timedelta(hours=10))
+    # Both meals fall on Jul 23 in UTC (01:00 and 14:00), but in +10 the second is
+    # already 00:00 on the 24th. One UTC row, two local rows: the tz has to drive
+    # the split, or a late dinner lands on yesterday.
+    meals = [Meal(ts_utc=T0 + 3600, name="lunch"), Meal(ts_utc=T0 + 14 * 3600, name="dinner")]
+    assert [d["day"] for d in analysis.daily_intake(meals, [], plus10)] == [
+        "2026-07-23", "2026-07-24",
+    ]
+    assert [d["day"] for d in analysis.daily_intake(meals, [], timezone.utc)] == ["2026-07-23"]
+
+
+def test_daily_intake_skips_days_with_nothing_logged():
+    # A basal-only day contributes no rapid insulin and no meal, so it must not
+    # appear as a row of zeroes implying a day of fasting.
+    basal = [InsulinDose(ts_utc=T0, units=36.0, kind="basal")]
+    assert analysis.daily_intake([], basal, timezone.utc) == []
+    assert analysis.daily_intake([], [], timezone.utc) == []
+
+
 def test_post_meal_still_sorted_recent_first():
     readings = [r(i * 300, 8.0) for i in range(0, 30)]  # every 5 min, ~2.5h
     meals = [

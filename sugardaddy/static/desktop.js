@@ -345,6 +345,58 @@
         <td>${p.peak_delta_display}</td><td>${p.minutes_to_peak}m</td><td>${p.end_display}</td>`;
       tb.appendChild(tr);
     });
+
+    renderDaily(s.daily);
+  }
+
+  // ---- daily intake rollup ----
+  // Deliberately plain: what went in each day and how much mealtime insulin met
+  // it. Basal is excluded upstream (see analysis.daily_intake) because one nightly
+  // long-acting dose would dwarf the boluses this sits beside.
+  function renderDaily(rows) {
+    const tb = document.querySelector("#daily-table tbody");
+    if (!tb) return;
+    const list = (rows || []).slice().reverse(); // newest day first, like the entry tables
+    tb.innerHTML = "";
+
+    // A total built from only some of its inputs is still shown — what was logged
+    // is real — but it has to say so, or a light day and a badly-logged one look
+    // identical. Same "*" convention as the post-meal reference.
+    const mark = (complete, what) =>
+      complete ? "" : `<span class="partial" title="not every meal that day has ${what}, so this is a floor, not a total">*</span>`;
+    const cell = (n, unit, complete, what) =>
+      n ? `${n}${unit}${mark(complete, what)}` : `<span class="muted">·</span>`;
+
+    list.forEach((d) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${esc(d.label || d.day)}</td>` +
+        `<td>${cell(d.carbs_g, " g", d.carbs_complete, "a carb count")}</td>` +
+        `<td>${cell(d.calories, " kcal", d.calories_complete, "a calorie count")}</td>` +
+        `<td>${cell(d.insulin_units, "u", true, "")}</td>` +
+        `<td class="muted">${d.meal_count}</td>` +
+        `<td class="muted">${d.dose_count}</td>`;
+      tb.appendChild(tr);
+    });
+
+    // Mean per logged day, not per calendar day in the range: a day nothing was
+    // logged on is a gap in the record, and averaging it in as a zero would read
+    // as a fast that never happened.
+    const foot = document.getElementById("daily-avg");
+    if (!foot) return;
+    if (!list.length) {
+      foot.innerHTML = `<th colspan="6" class="muted">Nothing logged in this range.</th>`;
+      return;
+    }
+    const mean = (key) => list.reduce((a, d) => a + (d[key] || 0), 0) / list.length;
+    const every = (key) => list.every((d) => d[key]);
+    foot.innerHTML =
+      `<th>Average / day <span class="muted">(${list.length} day${list.length === 1 ? "" : "s"})</span></th>` +
+      `<th>${mean("carbs_g").toFixed(0)} g${mark(every("carbs_complete"), "a carb count")}</th>` +
+      `<th>${mean("calories").toFixed(0)} kcal${mark(every("calories_complete"), "a calorie count")}</th>` +
+      `<th>${mean("insulin_units").toFixed(1)}u</th>` +
+      `<th class="muted">${mean("meal_count").toFixed(1)}</th>` +
+      `<th class="muted">${mean("dose_count").toFixed(1)}</th>`;
   }
 
   // ---- tables: insulin + meals ----

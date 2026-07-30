@@ -41,6 +41,10 @@ Everything runs on your own infrastructure.
 - **Analysis** of the timeline — time in range, average glucose, estimated GMI,
   and high and low counts. It also measures the 2-hour glucose response after
   each logged meal.
+- **Daily intake table** (desktop) — carbs, calories, and mealtime insulin per
+  day, with a per-day average. Basal is excluded from the insulin total, because
+  one long-acting dose would hide the mealtime doses. A `*` marks a day where not
+  every meal carries the figure, so the total is a floor and not a fact.
 - **Basal reminder** — the app can send your phone one notification. It tells you
   when no **basal** dose has been logged for more than a day. It reports a gap in
   the log. It never tells you to take a dose. This feature is off by default. See

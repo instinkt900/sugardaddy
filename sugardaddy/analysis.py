@@ -329,6 +329,74 @@ def insulin_summary(doses: list[InsulinDose]) -> dict:
     }
 
 
+def daily_intake(meals: list[Meal], doses: list[InsulinDose], tz: tzinfo) -> list[dict]:
+    """Carbs, calories and mealtime insulin per local calendar day, oldest first.
+
+    The insulin total is bolus+correction only (`iob.is_rapid` decides, so "what
+    counts as rapid" stays defined in one place). Basal is a separate depot on its
+    own schedule, and a single 36 u basal folded into this column would swamp the
+    mealtime doses the row exists to sit beside.
+
+    Carbs and calories are summed from the meals that carry them, and each column
+    says whether *every* meal that day contributed one. A plate logged without
+    calories makes the day's total an understatement rather than a fact, and a
+    table that can't admit that invites arithmetic it doesn't support.
+
+    A day appears only if something was logged on it: no meals and no rapid doses
+    means no row, rather than a run of zeroes implying a day of fasting.
+    """
+    days: dict[str, dict] = {}
+
+    def row_for(ts: int) -> dict:
+        day = datetime.fromtimestamp(ts, tz).strftime("%Y-%m-%d")
+        return days.setdefault(
+            day,
+            {
+                "day": day,
+                "carbs_g": 0.0,
+                "calories": 0.0,
+                "insulin_units": 0.0,
+                "meal_count": 0,
+                "dose_count": 0,
+                "carbs_complete": True,
+                "calories_complete": True,
+            },
+        )
+
+    for m in meals:
+        row = row_for(m.ts_utc)
+        row["meal_count"] += 1
+        # Partial figures still count toward the total — what was logged is real,
+        # and dropping the whole meal would put the number further from the truth,
+        # not closer. The flag is what stops it being read as complete. Same
+        # treatment the post-meal reference gives an incomplete plate.
+        if m.total_carbs is None or not m.carbs_complete:
+            row["carbs_complete"] = False
+        if m.total_carbs is not None:
+            row["carbs_g"] += m.total_carbs
+        # There is no Meal.calories_complete to lean on, but the rule is the same.
+        if m.total_calories is None or not all(i.calories is not None for i in m.items):
+            row["calories_complete"] = False
+        if m.total_calories is not None:
+            row["calories"] += m.total_calories
+
+    for d in doses:
+        if not is_rapid(d):
+            continue
+        row = row_for(d.ts_utc)
+        row["dose_count"] += 1
+        row["insulin_units"] += d.units
+
+    out = []
+    for day in sorted(days):
+        row = days[day]
+        row["carbs_g"] = round(row["carbs_g"], 1)
+        row["calories"] = round(row["calories"])
+        row["insulin_units"] = round(row["insulin_units"], 1)
+        out.append(row)
+    return out
+
+
 def basal_status(
     last_basal_ts: int | None,
     now: int,
