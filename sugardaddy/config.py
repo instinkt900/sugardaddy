@@ -93,9 +93,15 @@ class NotifyConfig:
     basal_interval_hours: float = 24.0
     basal_leniency_hours: float = 1.0
     # Re-push a still-unlogged basal this often, so swiping the notification away
-    # only buys a few hours. Reposts are silent and never re-alert — only the
-    # first notification of a cycle makes a noise. 0 = notify once per cycle.
-    repeat_hours: float = 4.0
+    # only buys you until the next one. Reposts are silent and never re-alert —
+    # only the first notification of a cycle makes a noise.
+    #
+    # Fractional hours are allowed and the default is deliberately short: the
+    # reminder is worth most in the first hour, while "just take the usual dose"
+    # is still the answer. Hours later it is a judgement call instead, and no
+    # amount of nudging helps. A value below poll_seconds cannot be honoured,
+    # since that is how often the check runs. 0 = notify once per cycle.
+    repeat_hours: float = 0.5
 
 
 @dataclass

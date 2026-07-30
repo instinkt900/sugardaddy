@@ -280,9 +280,19 @@ Because the clock is tied to the dose itself, the reminder lands near the time o
 day you usually take basal. There is no quiet-hours setting to manage.
 
 You get one notification per missed dose. After that, `repeat_hours` re-sends it
-every 4 hours by default. Every re-send is silent, and it replaces the previous
-notification instead of stacking. So swiping the reminder away only buys you a few
-hours. Set `repeat_hours = 0` to be told once and no more.
+every 30 minutes by default. Every re-send is silent, and it replaces the previous
+notification instead of stacking. So swiping the reminder away only buys you until
+the next one.
+
+The repeat is short on purpose. A reminder is worth most in the first hour, while
+"just take the usual dose" is still the answer. Hours later the same reminder asks
+a harder question that the app must not answer for you. Set `repeat_hours = 0` to
+be told once and no more.
+
+The server cannot tell whether you dismissed a notification or ignored it, because
+Web Push reports nothing back. The repeat therefore runs on its own clock either
+way. Logging a basal dose is the only thing that stops it, and that also re-arms
+it for the next day.
 
 Log a basal dose and the reminder resets for the next day. If no basal dose has
 **ever** been logged, the app stays silent. A fresh install must not nag you about
@@ -345,7 +355,7 @@ environment only.
 | `ttl_seconds` | 86400 | how long a push service holds a message for a phone that is offline |
 | `basal_interval_hours` | 24 | the expected gap between logged basal doses |
 | `basal_leniency_hours` | 1 | extra grace before the phone says anything |
-| `repeat_hours` | 4 | how often to re-send a reminder that still stands. `0` = say it once. |
+| `repeat_hours` | 0.5 | how often to re-send a reminder that still stands. Fractions are fine, and a value below `poll_seconds` cannot be honoured. `0` = say it once. |
 
 Signing key: `SUGARDADDY_VAPID_PRIVATE_KEY`, from the environment only.
 

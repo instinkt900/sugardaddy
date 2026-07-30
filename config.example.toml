@@ -74,9 +74,15 @@ ttl_seconds = 86400
 basal_interval_hours = 24
 basal_leniency_hours = 1
 # Re-push a still-unlogged basal this often, so swiping the notification away
-# only buys a few hours. Reposts are silent — only the first one makes a noise.
-# Set to 0 to be told once per missed dose and no more.
-repeat_hours = 4
+# only buys you until the next one. Reposts are silent and replace the previous
+# notification — only the first one makes a noise.
+#
+# Fractions are fine (0.5 = every 30 min). Short is deliberate: a reminder is
+# worth most in the first hour, while "just take the usual dose" is still the
+# answer. Later on it becomes a judgement call the app has no business nudging
+# you about. Values below poll_seconds can't be honoured — the check only runs
+# that often. 0 = say it once per missed dose and no more.
+repeat_hours = 0.5
 
 [backfill]
 # Only used by the one-shot `sugardaddy backfill` command to seed history from an
