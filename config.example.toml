@@ -50,6 +50,34 @@ peak_minutes = 75   # time to peak activity (~55 min Fiasp; ~65–75 min aspart/
 # icr = 10          # grams of carb covered by 1 u
 # target_bg = 6.0   # what a correction aims at; default is the target band midpoint
 
+[notify]
+# Push notifications. There is exactly one: a reminder that no BASAL dose has
+# been logged for a while. It is a reminder about the LOG, not dosing advice —
+# it reports that nothing was recorded, never that you should take a dose.
+#
+# Off by default. To switch it on you also need a VAPID signing key in the
+# server's environment (`sugardaddy vapid-keys` mints one; it goes in
+# SUGARDADDY_VAPID_PRIVATE_KEY, never in this file), and the app must be served
+# over HTTPS — browsers refuse push on plain HTTP.
+enabled = false
+# Contact address for the push service, so it can reach you about a misbehaving
+# server. Required when enabled. "mailto:..." or "https://...".
+subject = ""
+# How often the running server checks. 0 turns the in-process check off, for
+# driving `sugardaddy notify` from cron instead.
+poll_seconds = 900
+# How long a push service should hold a message for a phone that's offline.
+ttl_seconds = 86400
+# The reminder: expected gap between basal doses, plus grace on top before the
+# phone says anything. 24 + 1 means the first notification arrives 25 h after
+# your last logged basal. Raise the leniency to give yourself longer.
+basal_interval_hours = 24
+basal_leniency_hours = 1
+# Re-push a still-unlogged basal this often, so swiping the notification away
+# only buys a few hours. Reposts are silent — only the first one makes a noise.
+# Set to 0 to be told once per missed dose and no more.
+repeat_hours = 4
+
 [backfill]
 # Only used by the one-shot `sugardaddy backfill` command to seed history from an
 # existing Home Assistant install. Unused at runtime; safe to leave blank.

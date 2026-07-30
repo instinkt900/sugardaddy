@@ -232,6 +232,12 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
   border-radius: 6px; padding: 1px 7px; font-size: 12px; margin-left: 4px;
 }
 
+/* Push toggle. Sits below the recent entries: it's a setting you touch once per
+   device, so it stays out of the way of logging. */
+.notify { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.notify .combo-btn { height: 36px; }
+.notify-hint { margin: 0; font-size: 12px; flex: 1 1 160px; }
+
 .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 13px; }
 
 /* ---------------- Desktop ---------------- */

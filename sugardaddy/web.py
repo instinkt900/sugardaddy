@@ -10,6 +10,7 @@ startup so a single ``serve`` process does everything.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from sugardaddy import __version__
+from sugardaddy import __version__, notify
 from sugardaddy.analysis import post_meal_responses, summarize
 from sugardaddy.config import Config, load_config
 from sugardaddy.iob import active_activity, active_iob, activity_phase, is_rapid
@@ -118,6 +119,12 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     db = Database(cfg.database.path)
     db.init_db()
     tz = _tz(cfg)
+
+    # Derived once at startup: "" means notifications are off or misconfigured,
+    # which the phone's toggle reads as "unavailable" rather than as an error.
+    vapid_public_key = notify.public_key(cfg)
+    if cfg.notify.enabled and not vapid_public_key:
+        log.warning("[notify] is enabled but no usable VAPID key — push is disabled")
 
     templates = Jinja2Templates(directory=str(_HERE / "templates"))
     app = FastAPI(title="Sugar Daddy", version=__version__)
@@ -623,19 +630,77 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         ok = db.delete_meal_template(template_id)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
+    # --- push subscriptions ----------------------------------------------
+
+    @app.get("/api/push/key")
+    def push_key():
+        """The applicationServerKey a browser needs in order to subscribe.
+
+        503 rather than an empty key so the phone can tell "push isn't set up on
+        this server" apart from "this browser can't do push"."""
+        if not vapid_public_key:
+            return JSONResponse({"error": "push not configured"}, status_code=503)
+        return {"key": vapid_public_key}
+
+    @app.post("/api/push/subscribe")
+    async def push_subscribe(request: Request):
+        body = await request.json()
+        endpoint = (body.get("endpoint") or "").strip()
+        keys = body.get("keys") or {}
+        p256dh = (keys.get("p256dh") or "").strip()
+        auth = (keys.get("auth") or "").strip()
+        # Without both keys the push service could only ever deliver an empty
+        # wake-up, so an incomplete subscription is worth rejecting outright.
+        if not (endpoint and p256dh and auth):
+            return JSONResponse({"error": "malformed subscription"}, status_code=400)
+        sub_id = db.add_subscription(
+            endpoint, p256dh, auth, (body.get("label") or "").strip(), now_epoch()
+        )
+        return {"id": sub_id}
+
+    @app.post("/api/push/unsubscribe")
+    async def push_unsubscribe(request: Request):
+        body = await request.json()
+        ok = db.delete_subscription((body.get("endpoint") or "").strip())
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    @app.post("/api/push/test")
+    async def push_test():
+        """Send a throwaway notification to every subscribed device — the quickest
+        way to prove the whole chain (VAPID signing, push service, service worker)
+        works without waiting for a basal to actually go unlogged."""
+        if not vapid_public_key:
+            return JSONResponse({"error": "push not configured"}, status_code=503)
+        payload = {
+            "title": "Sugar Daddy",
+            "body": "Test notification — push is working.",
+            "url": "/",
+            "tag": "sugardaddy-test",
+            "renotify": True,
+        }
+        # Blocking network I/O, one request per subscription: off the event loop.
+        return await asyncio.to_thread(notify.send_to_all, db, cfg, payload, now_epoch())
+
     # --- lifecycle -------------------------------------------------------
 
     if start_ingest:
         @app.on_event("startup")
         def _startup():
-            if not (cfg.librelink.email and cfg.librelink.password):
+            if cfg.librelink.email and cfg.librelink.password:
+                start_background(cfg, db)
+                log.info("glucose ingestion started")
+            else:
                 log.warning(
                     "no LibreLinkUp credentials (SUGARDADDY_LIBRE_EMAIL/PASSWORD) — "
                     "glucose ingestion disabled; manual logging still works"
                 )
-                return
-            start_background(cfg, db)
-            log.info("glucose ingestion started")
+            # Deliberately independent of ingestion: the basal reminder reads only
+            # the dose log, so it works with no glucose feed at all.
+            if vapid_public_key and cfg.notify.poll_seconds > 0:
+                notify.start_background(cfg, db, tz)
+                log.info(
+                    "basal reminder started (checking every %ds)", cfg.notify.poll_seconds
+                )
 
     app.state.config = cfg
     app.state.db = db

@@ -9,6 +9,7 @@ A small, self-contained app for someone using a **FreeStyle Libre** CGM. It:
 - ingests glucose readings over time **directly from LibreLinkUp** (no Home
   Assistant needed at runtime — the AU region is the live setup),
 - lets the user log **insulin doses** and **meals** from a phone web UI,
+- sends **one** push notification: no **basal** dose logged for >24 h (+ leniency),
 - provides a **desktop dashboard** to review glucose/insulin/meals on one
   timeline, and
 - offers a retrospective **`report`** (CLI/JSON) plus a Claude **review skill**.
@@ -41,11 +42,13 @@ sugardaddy/            Python package
   config.py            TOML loader; dataclasses; _known() rejects unknown keys; secrets from env only
   constants.py         units + GMI helpers; mg/dL <-> mmol/L; default target band (3.9–10.0 mmol/L)
   ingest.py            background poller (authenticate, backfill recent window once, then poll)
+  notify.py            Web Push app server (own VAPID key) + the basal-reminder pass/loop
   source.py            GlucoseSource seam (keeps app independent of LibreLinkUp specifics)
   backfill.py          one-shot history seed from Home Assistant REST
   analysis.py          PURE retrospective functions (summarize, post_meal_responses,
                        variability, daily_breakdown, hourly_profile, low_episodes,
-                       insulin_summary, carb_coverage) — no I/O, no clock, no config
+                       insulin_summary, basal_status, carb_coverage) — no I/O, no
+                       clock, no config
   report.py            `report` command: window + tz resolution, calls analysis, text/JSON
   templates/           base.html, phone/index.html, desktop/dashboard.html, partials/recent.html
   static/              style.css, phone.js, desktop.js, common.js, sw.js, vendored libs, icons/
@@ -74,8 +77,29 @@ config.example.toml    the only tracked config; real config.toml is gitignored
 - Read APIs: `GET /api/{current,timeline,entries,stats,recent,foods,meal-templates}`
 - Write APIs: `POST /api/{insulin,meal,foods,meal-templates}`;
   `PATCH`/`DELETE /api/{insulin,meal,foods,meal-templates}/{id}`
+- Push: `GET /api/push/key`, `POST /api/push/{subscribe,unsubscribe,test}`
+  (`/api/push/test` is the fastest way to prove a device's push chain works)
 - The service worker (`sw.js`) is **network-first**, so code/template/static
-  changes roll out on reload once deployed.
+  changes roll out on reload once deployed. It also carries the `push` /
+  `notificationclick` handlers; bump `CACHE` when changing it.
+
+## Notifications (`notify.py`)
+
+There is **exactly one** notification: no `basal` dose logged for
+`basal_interval_hours + basal_leniency_hours`. Boundaries that must hold:
+
+- It reports a gap in the **log**, never an instruction to dose. Wording stays
+  "no basal dose logged", not "take your basal" — the safety line in
+  `docs/plans/insulin-awareness.md` applies to notification copy too.
+- The decision is pure maths in `analysis.basal_status`; `notify.py` only does
+  state, config, and network. Add new reminder maths to `analysis.py` + `tests/`.
+- The cycle anchor is the last basal dose's timestamp, kept in the `notify_state`
+  table. Logging a basal moves the anchor, which re-arms the reminder — that is
+  what makes "once per missed dose" fall out of the arithmetic. State is stamped
+  **only** after a successful send, so a failed pass retries.
+- No basal ever logged ⇒ silent. A fresh install must not nag.
+- The app is its own push server (own VAPID key, `SUGARDADDY_VAPID_PRIVATE_KEY`);
+  the public key is *derived*, never configured. **HTTPS is required** for push.
 
 ## Commands
 
@@ -85,6 +109,8 @@ sugardaddy ingest   -c config.toml [--once]   # poller only
 sugardaddy backfill -c config.toml --days 90  # one-time HA history seed
 sugardaddy init-db  -c config.toml            # create schema and exit
 sugardaddy report   -c config.toml [--days N] [--db PATH] [--json]
+sugardaddy notify   -c config.toml [--dry-run]  # one basal-reminder pass
+sugardaddy vapid-keys                           # mint the Web Push signing key
 ```
 
 `report` is deterministic analysis only (TIR/GMI, variability/CV, per-day and
@@ -96,10 +122,11 @@ analysed off-box; units/targets/tz still come from the config.
 
 One TOML (`config.toml`; template is `config.example.toml`). Sections:
 `[librelink]`, `[database]`, `[web]` (host/port/timezone/units/target_low/high),
-`[backfill]`. `config.py` uses dataclasses and `_known()` so an **unknown TOML
-key fails loudly**. **Secrets are never in the TOML** — they come from env only:
-`SUGARDADDY_LIBRE_EMAIL`, `SUGARDADDY_LIBRE_PASSWORD`, `SUGARDADDY_HA_TOKEN`
-(backfill only). Storage is always mg/dL; `units` only affects display.
+`[insulin]`, `[notify]`, `[backfill]`. `config.py` uses dataclasses and `_known()`
+so an **unknown TOML key fails loudly**. **Secrets are never in the TOML** — they
+come from env only: `SUGARDADDY_LIBRE_EMAIL`, `SUGARDADDY_LIBRE_PASSWORD`,
+`SUGARDADDY_VAPID_PRIVATE_KEY` (push signing), `SUGARDADDY_HA_TOKEN` (backfill
+only). Storage is always mg/dL; `units` only affects display.
 
 ## Deployment
 

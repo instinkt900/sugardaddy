@@ -395,7 +395,108 @@
     renderPlate();
   }
 
+  // ================= push notifications ======================================
+  // The one notification is the basal reminder (see sugardaddy/notify.py). This
+  // has to be hand-written rather than HTMX: it must talk to the browser's
+  // PushManager before it has anything to send the server.
+
+  // The applicationServerKey has to be raw bytes, but the server sends the key as
+  // base64url — the only form the Web Push spec puts on the wire.
+  function keyToBytes(b64) {
+    const padded = (b64 + "=".repeat((4 - (b64.length % 4)) % 4))
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+  }
+
+  const notifyBtn = () => document.getElementById("notify-toggle");
+  const notifyHint = () => document.getElementById("notify-hint");
+
+  function setNotifyState(label, message, disabled) {
+    const b = notifyBtn();
+    const h = notifyHint();
+    if (b) {
+      b.textContent = label;
+      b.disabled = !!disabled;
+    }
+    if (h && message) h.textContent = message;
+  }
+
+  async function pushSubscribe(reg, key) {
+    // Must stay inside the click handler's task: Android only shows the
+    // permission prompt for a request it can attribute to a user gesture.
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      setNotifyState("Enable reminders", "Permission denied — enable it in site settings.", false);
+      return;
+    }
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: keyToBytes(key),
+    });
+    const res = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.assign(sub.toJSON(), { label: navigator.platform || "" })),
+    });
+    if (!res.ok) throw new Error("subscribe failed: " + res.status);
+    setNotifyState("Disable reminders", "This device will be told when no basal has been logged.", false);
+  }
+
+  async function pushUnsubscribe(sub) {
+    // Tell the server first: if the browser subscription goes and then the server
+    // can't be reached, it keeps pushing to an endpoint nothing listens on.
+    await fetch("/api/push/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: sub.endpoint }),
+    });
+    await sub.unsubscribe();
+    setNotifyState("Enable reminders", "Reminders are off for this device.", false);
+  }
+
+  async function initPush() {
+    if (!notifyBtn()) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setNotifyState("Not supported", "This browser can't do push notifications.", true);
+      return;
+    }
+
+    let key;
+    try {
+      const res = await fetch("/api/push/key");
+      if (!res.ok) {
+        setNotifyState("Unavailable", "Reminders aren't switched on for this server.", true);
+        return;
+      }
+      key = (await res.json()).key;
+    } catch (_) {
+      setNotifyState("Unavailable", "Couldn't reach the server.", true);
+      return;
+    }
+
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      setNotifyState("Disable reminders", "This device will be told when no basal has been logged.", false);
+    } else {
+      setNotifyState("Enable reminders", "Get a reminder when no basal dose has been logged.", false);
+    }
+
+    notifyBtn().addEventListener("click", async () => {
+      setNotifyState("Working…", null, true);
+      try {
+        sub = await reg.pushManager.getSubscription();
+        if (sub) await pushUnsubscribe(sub);
+        else await pushSubscribe(reg, key);
+      } catch (err) {
+        setNotifyState("Enable reminders", "Something went wrong: " + err.message, false);
+      }
+    });
+  }
+
   // ================= init ====================================================
+  window.addEventListener("load", initPush);
   window.addEventListener("load", refresh);
   setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });

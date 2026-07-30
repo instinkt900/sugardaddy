@@ -69,6 +69,36 @@ class InsulinConfig:
 
 
 @dataclass
+class NotifyConfig:
+    """Push notifications. One reminder only: basal has gone unlogged.
+
+    The app is its own Web Push application server — it signs and encrypts every
+    message with its own VAPID key (see notify.py), so there is no notification
+    account or API key anywhere. ``enabled`` is the whole feature's on/off switch.
+    """
+
+    enabled: bool = False
+    # VAPID contact address, required by push services so they can reach whoever
+    # runs this server about a misbehaving application server. mailto: or https:.
+    subject: str = ""
+    # How often the in-process notifier checks. 0 turns it off, for driving
+    # `sugardaddy notify` from cron instead; the default suits the Docker
+    # deployment, which has no cron in the container.
+    poll_seconds: int = 900
+    # How long the push service should hold a message for a phone that's offline.
+    ttl_seconds: int = 86_400
+    # The reminder itself: how long a gap between logged basal doses is expected,
+    # and how much grace to allow on top before saying anything. Kept separate so
+    # 24 h stays the honest threshold while the nag holds off until 25.
+    basal_interval_hours: float = 24.0
+    basal_leniency_hours: float = 1.0
+    # Re-push a still-unlogged basal this often, so swiping the notification away
+    # only buys a few hours. Reposts are silent and never re-alert — only the
+    # first notification of a cycle makes a noise. 0 = notify once per cycle.
+    repeat_hours: float = 4.0
+
+
+@dataclass
 class BackfillConfig:
     # Only used by the one-shot `backfill` command to seed history from HA.
     ha_url: str = ""
@@ -82,7 +112,11 @@ class Config:
     database: DatabaseConfig
     web: WebConfig
     insulin: InsulinConfig = field(default_factory=InsulinConfig)
+    notify: NotifyConfig = field(default_factory=NotifyConfig)
     backfill: BackfillConfig = field(default_factory=BackfillConfig)
+    # Env-only: the VAPID signing key. Anyone holding it can push to every
+    # subscribed device, so it must never land in a file that could be committed.
+    vapid_private_key: str = ""
 
     @property
     def target_low_mgdl(self) -> float:
@@ -151,12 +185,45 @@ def load_config(path: str | os.PathLike) -> Config:
     database = DatabaseConfig(**_known(raw.get("database", {}), DatabaseConfig))
     web = WebConfig(**_known(raw.get("web", {}), WebConfig))
     insulin = InsulinConfig(**_known(raw.get("insulin", {}), InsulinConfig))
+    notify = NotifyConfig(**_known(raw.get("notify", {}), NotifyConfig))
+    _check_notify(notify)
 
     bf_raw = _known(raw.get("backfill", {}), BackfillConfig)
     bf_raw.pop("token", None)  # never from TOML
     backfill = BackfillConfig(**bf_raw)
     backfill.token = os.environ.get("SUGARDADDY_HA_TOKEN", "").strip()
 
-    return Config(
-        librelink=librelink, database=database, web=web, insulin=insulin, backfill=backfill
+    cfg = Config(
+        librelink=librelink,
+        database=database,
+        web=web,
+        insulin=insulin,
+        notify=notify,
+        backfill=backfill,
     )
+    cfg.vapid_private_key = os.environ.get("SUGARDADDY_VAPID_PRIVATE_KEY", "").strip()
+    return cfg
+
+
+def _check_notify(notify: NotifyConfig) -> None:
+    """Validate [notify] at load time, but only when it is switched on.
+
+    A misconfigured notifier fails silently by nature — you find out by not being
+    reminded — so anything checkable is checked at startup instead. A subject the
+    push service rejects would otherwise only surface as a 403 hours later.
+    """
+    if not notify.enabled:
+        return
+    if not notify.subject.startswith(("mailto:", "https://")):
+        raise ConfigError(
+            "[notify] subject must be a 'mailto:' or 'https://' contact URL "
+            f"(got {notify.subject!r})"
+        )
+    if notify.poll_seconds < 0:
+        raise ConfigError("[notify] poll_seconds must be >= 0")
+    if notify.basal_interval_hours <= 0:
+        raise ConfigError("[notify] basal_interval_hours must be > 0")
+    if notify.basal_leniency_hours < 0:
+        raise ConfigError("[notify] basal_leniency_hours must be >= 0")
+    if notify.repeat_hours < 0:
+        raise ConfigError("[notify] repeat_hours must be >= 0 (0 = notify once per cycle)")

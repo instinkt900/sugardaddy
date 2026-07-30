@@ -5,6 +5,8 @@
   sugardaddy backfill  — one-shot import of history from Home Assistant
   sugardaddy init-db   — create the SQLite schema and exit
   sugardaddy report    — print a retrospective analysis (text or --json)
+  sugardaddy notify    — push the basal reminder if one is due
+  sugardaddy vapid-keys — mint a Web Push signing key
 """
 
 from __future__ import annotations
@@ -51,6 +53,13 @@ def main(argv: list[str] | None = None) -> int:
     p_report.add_argument("--days", type=int, default=14, help="window size in days (default: 14)")
     p_report.add_argument("--json", action="store_true", help="emit JSON instead of text")
 
+    p_notify = sub.add_parser("notify", help="push the basal reminder if one is due")
+    p_notify.add_argument("-c", "--config", required=True, help="path to config.toml")
+    p_notify.add_argument("--dry-run", action="store_true",
+                          help="show what would be sent, without sending or stamping")
+
+    sub.add_parser("vapid-keys", help="mint a Web Push signing key for notifications")
+
     args = parser.parse_args(argv)
     _setup_logging(args.verbose)
 
@@ -78,6 +87,14 @@ def main(argv: list[str] | None = None) -> int:
         from sugardaddy.report import run_report
 
         return run_report(args.config, db_path=args.db, days=args.days, as_json=args.json)
+    if args.command == "notify":
+        from sugardaddy.notify import run_notify
+
+        return run_notify(args.config, dry_run=args.dry_run)
+    if args.command == "vapid-keys":
+        from sugardaddy.notify import run_vapid_keys
+
+        return run_vapid_keys()
 
     parser.print_help(sys.stderr)
     return 2

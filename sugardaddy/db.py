@@ -20,6 +20,7 @@ from sugardaddy.models import (
     MealItem,
     MealTemplate,
     MealTemplateItem,
+    PushSubscription,
 )
 
 _SCHEMA = """
@@ -97,6 +98,27 @@ CREATE TABLE IF NOT EXISTS meal_template_items (
     count       REAL    NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_mti_template ON meal_template_items(template_id);
+
+-- Devices subscribed to push notifications. The browser hands back the same
+-- endpoint on every page load, so it is UNIQUE and writes upsert on it.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    endpoint   TEXT    NOT NULL UNIQUE,   -- the browser's own identity for it
+    p256dh     TEXT    NOT NULL,          -- payload encryption key
+    auth       TEXT    NOT NULL,          -- payload auth secret
+    label      TEXT    NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    last_ok_at INTEGER,
+    failures   INTEGER NOT NULL DEFAULT 0
+);
+
+-- Bookkeeping for the notifier: what it has already pushed about, so a restart
+-- doesn't re-nag and a 15-minute poll doesn't nag 96 times a day. Key/value
+-- because there is one reminder with two facts to remember (see notify.py).
+CREATE TABLE IF NOT EXISTS notify_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -291,6 +313,17 @@ class Database:
                 (start, end),
             ).fetchall()
         return [_dose(r) for r in rows]
+
+    def latest_dose_of_kind(self, kind: str) -> InsulinDose | None:
+        """The most recent dose of one kind, or None if there has never been one.
+        Used by the basal reminder, which only needs that single row and should
+        not have to read a window of history to find it."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM insulin_doses WHERE kind = ? ORDER BY ts_utc DESC LIMIT 1",
+                (kind,),
+            ).fetchone()
+        return _dose(row) if row else None
 
     # --- foods (library) -------------------------------------------------
 
@@ -521,6 +554,78 @@ class Database:
             [(template_id, i.food_id, i.name, i.carbs_g, i.calories, i.count) for i in items],
         )
 
+    # --- push subscriptions ----------------------------------------------
+
+    def list_subscriptions(self) -> list[PushSubscription]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM push_subscriptions ORDER BY created_at"
+            ).fetchall()
+        return [_subscription(r) for r in rows]
+
+    def add_subscription(
+        self, endpoint: str, p256dh: str, auth: str, label: str, now: int
+    ) -> int:
+        """Store a browser subscription, upserting on ``endpoint``.
+
+        Browsers re-hand us the same endpoint on every page load (and rotate the
+        keys when they refresh a subscription), so this has to be an upsert or the
+        table would grow a row per visit. A re-subscribe also clears the failure
+        count: whatever was wrong before, the browser says it is live now."""
+        with self.connect() as conn:
+            conn.execute(
+                """INSERT INTO push_subscriptions (endpoint, p256dh, auth, label, created_at)
+                     VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(endpoint) DO UPDATE SET
+                     p256dh   = excluded.p256dh,
+                     auth     = excluded.auth,
+                     label    = excluded.label,
+                     failures = 0""",
+                (endpoint, p256dh, auth, label, now),
+            )
+            row = conn.execute(
+                "SELECT id FROM push_subscriptions WHERE endpoint = ?", (endpoint,)
+            ).fetchone()
+            return int(row["id"])
+
+    def delete_subscription(self, endpoint: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,)
+            )
+            return cur.rowcount > 0
+
+    def mark_subscription_ok(self, sub_id: int, now: int) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE push_subscriptions SET last_ok_at = ?, failures = 0 WHERE id = ?",
+                (now, sub_id),
+            )
+
+    def mark_subscription_failed(self, sub_id: int) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE push_subscriptions SET failures = failures + 1 WHERE id = ?",
+                (sub_id,),
+            )
+
+    # --- notifier state --------------------------------------------------
+
+    def get_state(self, key: str) -> str | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM notify_state WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row else None
+
+    def set_state(self, key: str, value: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO notify_state (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+
     # --- generic helpers -------------------------------------------------
 
     def _update(self, table: str, row_id: int, fields: dict, allowed: set[str]) -> bool:
@@ -558,6 +663,19 @@ def _dose(row: sqlite3.Row) -> InsulinDose:
         units=row["units"],
         kind=row["kind"],
         note=row["note"],
+    )
+
+
+def _subscription(row: sqlite3.Row) -> PushSubscription:
+    return PushSubscription(
+        id=row["id"],
+        endpoint=row["endpoint"],
+        p256dh=row["p256dh"],
+        auth=row["auth"],
+        label=row["label"],
+        created_at=row["created_at"],
+        last_ok_at=row["last_ok_at"],
+        failures=row["failures"],
     )
 
 

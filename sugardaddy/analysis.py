@@ -329,6 +329,46 @@ def insulin_summary(doses: list[InsulinDose]) -> dict:
     }
 
 
+def basal_status(
+    last_basal_ts: int | None,
+    now: int,
+    *,
+    interval_hours: float = 24.0,
+    leniency_hours: float = 1.0,
+) -> dict:
+    """Whether a basal dose has gone unlogged for longer than it should have.
+
+    Basal is the one dose that is easy to forget and invisible in the glucose
+    trace until hours later, so it is worth a reminder. Note what this measures:
+    a gap in the *log*. It reports that no dose has been recorded — never that one
+    should now be taken.
+
+    ``interval_hours`` is the expected gap between basal doses and
+    ``leniency_hours`` is grace on top of it, kept separate so 24 h stays the
+    honest threshold while the nag holds off until 25.
+
+    ``last_basal_ts`` of None means no basal has ever been logged, which is
+    deliberately *not* overdue: a fresh install — or someone who isn't on basal at
+    all — must not be nagged about a dose there is no evidence they ever take.
+    """
+    if last_basal_ts is None:
+        return {
+            "last_ts": None,
+            "hours_since": None,
+            "due_at": None,
+            "due": False,
+            "overdue_hours": 0.0,
+        }
+    due_at = last_basal_ts + round((interval_hours + leniency_hours) * 3600)
+    return {
+        "last_ts": last_basal_ts,
+        "hours_since": round((now - last_basal_ts) / 3600, 1),
+        "due_at": due_at,
+        "due": now >= due_at,
+        "overdue_hours": round(max(0, now - due_at) / 3600, 1),
+    }
+
+
 def carb_coverage(meals: list[Meal]) -> dict:
     """How many logged meals actually carry a carb count — the gate on any
     carb-ratio analysis. Reported so improving logging discipline is measurable.

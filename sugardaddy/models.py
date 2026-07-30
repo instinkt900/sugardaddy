@@ -28,6 +28,30 @@ class InsulinDose:
 
 
 @dataclass
+class PushSubscription:
+    """A browser's Web Push subscription, as handed over by ``pushManager.subscribe()``.
+
+    ``endpoint`` is the browser's own stable identity for the subscription (and
+    the push-service URL we POST to), so it — not the row id — is the natural
+    unique key. The two keys are what the payload is encrypted to; without them
+    the push service could only deliver an empty wake-up.
+    """
+
+    endpoint: str
+    p256dh: str
+    auth: str
+    label: str = ""  # free-text device hint, so rows are tellable apart
+    created_at: int = 0
+    last_ok_at: int | None = None
+    failures: int = 0  # consecutive transient delivery failures
+    id: int | None = None
+
+    def to_info(self) -> dict:
+        """Reshape into the ``subscription_info`` dict pywebpush expects."""
+        return {"endpoint": self.endpoint, "keys": {"p256dh": self.p256dh, "auth": self.auth}}
+
+
+@dataclass
 class Food:
     """A reusable item in the food library. Values are per single unit/serving.
     Editing a food never changes history — logging copies values into a

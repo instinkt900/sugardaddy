@@ -107,6 +107,11 @@
 
   {% include "partials/recent.html" %}
 
+  <section class="notify">
+    <button type="button" id="notify-toggle" class="combo-btn" disabled>Checking…</button>
+    <p class="notify-hint muted" id="notify-hint">Checking whether this device can be reminded…</p>
+  </section>
+
   <footer class="foot">
     <a href="/desktop">Desktop view →</a>
     <span class="muted">v{{ version }}</span>

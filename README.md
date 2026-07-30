@@ -41,6 +41,10 @@ Everything runs on your own infrastructure.
 - **Analysis** of the timeline — time in range, average glucose, estimated GMI,
   and high and low counts. It also measures the 2-hour glucose response after
   each logged meal.
+- **Basal reminder** — the app can send your phone one notification. It tells you
+  when no **basal** dose has been logged for more than a day. It reports a gap in
+  the log. It never tells you to take a dose. This feature is off by default. See
+  [Notifications](#notifications).
 - **History seed** — import once from an existing Home Assistant install. This
   step is optional, and it gives your charts depth from day one.
 
@@ -111,6 +115,8 @@ sugardaddy ingest   -c config.toml [--once]   # poller only (--once = sync, then
 sugardaddy backfill -c config.toml --days 90  # one-time HA history seed
 sugardaddy init-db  -c config.toml            # create the DB schema, then exit
 sugardaddy report   -c config.toml [--days N] # retrospective analysis (text or --json)
+sugardaddy notify   -c config.toml [--dry-run] # push the basal reminder, if one is due
+sugardaddy vapid-keys                         # mint a Web Push signing key
 ```
 
 Add `-v` to get debug logs.
@@ -204,6 +210,81 @@ If HA already holds months of Libre history, import it so the charts start deep.
 HA stores AU sensors in mmol/L, and the import converts them to mg/dL. If your
 HA sensor already reports mg/dL, pass `--unit mg/dL`.
 
+## Notifications
+
+The app sends **one** notification: a reminder that no **basal** dose has been
+logged for more than a day.
+
+Basal is the dose that is easy to forget. Unlike a bolus, it also stays invisible
+in the glucose trace for hours. So it is the one thing worth a nudge.
+
+> The notification is about your **log**, not your body. It says that no dose was
+> recorded. It never says to take one. If you took the dose and forgot to log it,
+> log it and the reminder stops.
+
+The app is its own push server. It holds a VAPID key pair. It signs and encrypts
+every message itself. No third-party notification service is involved, and no API
+key. The browser push service (FCM on Android) only relays a blob that it cannot
+read. That relay is part of the browser, so you cannot self-host it. But nothing
+about your data is visible to it.
+
+### Setup
+
+1. Mint a signing key:
+   ```bash
+   sugardaddy vapid-keys
+   ```
+2. Put the key in the server environment as `SUGARDADDY_VAPID_PRIVATE_KEY`. For
+   the Docker deployment, put it in `docker/.env`. Never put it in
+   `config.toml`. Anyone who holds this key can push to your devices.
+3. In `config.toml`, set `enabled = true` and a `subject` under `[notify]`.
+4. Rebuild and restart the container. The image bakes in the code, so a plain
+   restart is not enough:
+   ```bash
+   cd docker && docker compose up -d --build
+   ```
+5. On the phone, open the app and tap **Enable reminders**.
+
+Two requirements come first:
+
+- **HTTPS is mandatory.** A browser does not register a service worker over plain
+  HTTP, and it never subscribes to push. Serve the app behind a reverse proxy
+  with a real certificate.
+- **On Android, install the app first** (Chrome ⋮ → *Add to Home screen*). Push
+  to a plain browser tab is unreliable. iOS refuses it.
+
+To prove the chain works, send a test notification to every subscribed device:
+
+```bash
+curl -sX POST http://<host>:8080/api/push/test
+```
+
+### When the reminder fires
+
+The clock starts at your **last logged basal dose**. The reminder fires
+`basal_interval_hours` plus `basal_leniency_hours` after it. With the defaults,
+24 + 1, that is 25 hours later.
+
+Leniency is a separate setting on purpose. Keep 24 hours as the real threshold,
+and give yourself as much grace as you want on top. Raise
+`basal_leniency_hours` to 3 to wait until 27 hours.
+
+Because the clock is tied to the dose itself, the reminder lands near the time of
+day you usually take basal. There is no quiet-hours setting to manage.
+
+You get one notification per missed dose. After that, `repeat_hours` re-sends it
+every 4 hours by default. Every re-send is silent, and it replaces the previous
+notification instead of stacking. So swiping the reminder away only buys you a few
+hours. Set `repeat_hours = 0` to be told once and no more.
+
+Log a basal dose and the reminder resets for the next day. If no basal dose has
+**ever** been logged, the app stays silent. A fresh install must not nag you about
+a dose it has no evidence you take.
+
+A running server checks every `[notify] poll_seconds`. Set that to `0` to switch
+the check off, and run `sugardaddy notify` from cron instead. Add `--dry-run` to
+see what would be sent without sending anything.
+
 ## Common operations
 
 **Change credentials** — edit `docker/.env`, then recreate the container. A
@@ -247,6 +328,19 @@ environment only.
 | `timezone` | `Australia/Sydney` | display tz. Storage is UTC. |
 | `units` | `mmol/L` | display unit, `mmol/L` or `mg/dL`. Storage is mg/dL. |
 | `target_low` and `target_high` | 3.9 and 10.0 | time-in-range band, in display units |
+
+`[notify]` (the basal reminder — see [Notifications](#notifications))
+| key | default | meaning |
+|-----|---------|---------|
+| `enabled` | `false` | the on/off switch for all notifications |
+| `subject` | — | contact URL for the push service, `mailto:…` or `https://…`. Required when enabled. |
+| `poll_seconds` | 900 | seconds between checks. `0` switches the in-process check off. |
+| `ttl_seconds` | 86400 | how long a push service holds a message for a phone that is offline |
+| `basal_interval_hours` | 24 | the expected gap between logged basal doses |
+| `basal_leniency_hours` | 1 | extra grace before the phone says anything |
+| `repeat_hours` | 4 | how often to re-send a reminder that still stands. `0` = say it once. |
+
+Signing key: `SUGARDADDY_VAPID_PRIVATE_KEY`, from the environment only.
 
 `[backfill]` (one-time HA seed only)
 | key | default | meaning |
