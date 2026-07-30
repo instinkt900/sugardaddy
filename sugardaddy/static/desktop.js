@@ -366,10 +366,12 @@
   // day. /api/daily always starts at local midnight instead.
   let dailyDays = 7;
 
+  let dailyUnits = "";
+
   function loadDaily() {
     fetch(`/api/daily?days=${dailyDays}`)
       .then((r) => r.json())
-      .then((d) => renderDaily(d.rows))
+      .then((d) => { dailyUnits = d.units || ""; renderDaily(d.rows); })
       .catch(() => {});
   }
 
@@ -405,21 +407,36 @@
     const list = (rows || []).slice().reverse(); // newest day first, like the entry tables
     tb.innerHTML = "";
 
-    // A total built from only some of its inputs is still shown — what was logged
-    // is real — but it has to say so, or a light day and a badly-logged one look
-    // identical. Same "*" convention as the post-meal reference.
-    const mark = (complete, what) =>
-      complete ? "" : `<span class="partial" title="not every meal that day has ${what}, so this is a floor, not a total">*</span>`;
+    // A figure built from only some of its inputs is still shown — what was
+    // recorded is real — but it has to say so, or a light day and a badly-logged
+    // one look identical. Same "*" convention as the post-meal reference. `why` is
+    // the whole explanation because the reasons differ: unlogged carbs make a
+    // total a floor, while a half-covered sensor makes an average unrepresentative.
+    const mark = (complete, why) =>
+      complete ? "" : `<span class="partial" title="${why}">*</span>`;
+    const missing = (what) =>
+      `not every meal that day has ${what}, so this is a floor, not a total`;
+    const thin = "the sensor did not cover the whole day, so this average only spans the hours it was on";
     const cell = (n, unit, complete, what) =>
-      n ? `${n}${unit}${mark(complete, what)}` : `<span class="muted">·</span>`;
+      n ? `${n}${unit}${mark(complete, missing(what))}` : `<span class="muted">·</span>`;
+    // mmol/L is conventionally shown to 1 dp, mg/dL as a whole number.
+    const gDp = dailyUnits === "mg/dL" ? 0 : 1;
 
     list.forEach((d) => {
       const tr = document.createElement("tr");
       // Today is a day in progress, not a short day. Say so on the row and keep it
       // out of the average, or every mean reads low until bedtime.
       const today = d.in_progress ? ` <span class="tag">so far</span>` : "";
+      // Average glucose for the day. The title carries the sample size, since an
+      // average over 40 readings and one over 288 are not the same claim.
+      const g = d.glucose_avg == null
+        ? `<span class="muted">·</span>`
+        : `<span title="mean of ${d.reading_count} readings${dailyUnits ? " " + dailyUnits : ""}` +
+          `, covering ${Math.round((d.glucose_coverage || 0) * 100)}% of the day">${d.glucose_avg.toFixed(gDp)}</span>` +
+          mark(d.glucose_complete, thin);
       tr.innerHTML =
         `<td>${esc(d.label || d.day)}${today}</td>` +
+        `<td>${g}</td>` +
         `<td>${cell(d.carbs_g, " g", d.carbs_complete, "a carb count")}</td>` +
         `<td>${cell(d.calories, " kcal", d.calories_complete, "a calorie count")}</td>` +
         `<td>${cell(d.insulin_units, "u", true, "")}</td>` +
@@ -434,20 +451,30 @@
     const foot = document.getElementById("daily-avg");
     if (!foot) return;
     if (!list.length) {
-      foot.innerHTML = `<th colspan="6" class="muted">Nothing logged in this range.</th>`;
+      foot.innerHTML = `<th colspan="7" class="muted">Nothing logged in this range.</th>`;
       return;
     }
     const full = list.filter((d) => !d.in_progress);
     if (!full.length) {
-      foot.innerHTML = `<th colspan="6" class="muted">Today is still in progress — no complete day to average yet.</th>`;
+      foot.innerHTML = `<th colspan="7" class="muted">Today is still in progress — no complete day to average yet.</th>`;
       return;
     }
     const mean = (key) => full.reduce((a, d) => a + (d[key] || 0), 0) / full.length;
     const every = (key) => full.every((d) => d[key]);
+    // Glucose averages over the days that have one, so a day the sensor missed
+    // entirely doesn't count as a zero. It is a mean of daily means — the "typical
+    // day" figure this row is asking for, not the overall mean of every reading,
+    // which would let a long day outvote a short one.
+    const gDays = full.filter((d) => d.glucose_avg != null);
+    const gAvg = gDays.length
+      ? `${(gDays.reduce((a, d) => a + d.glucose_avg, 0) / gDays.length).toFixed(gDp)}` +
+        mark(gDays.every((d) => d.glucose_complete), thin)
+      : `<span class="muted">·</span>`;
     foot.innerHTML =
       `<th>Average / day <span class="muted">(${full.length} full day${full.length === 1 ? "" : "s"})</span></th>` +
-      `<th>${mean("carbs_g").toFixed(0)} g${mark(every("carbs_complete"), "a carb count")}</th>` +
-      `<th>${mean("calories").toFixed(0)} kcal${mark(every("calories_complete"), "a calorie count")}</th>` +
+      `<th>${gAvg}</th>` +
+      `<th>${mean("carbs_g").toFixed(0)} g${mark(every("carbs_complete"), missing("a carb count"))}</th>` +
+      `<th>${mean("calories").toFixed(0)} kcal${mark(every("calories_complete"), missing("a calorie count"))}</th>` +
       `<th>${mean("insulin_units").toFixed(1)}u</th>` +
       `<th class="muted">${mean("meal_count").toFixed(1)}</th>` +
       `<th class="muted">${mean("dose_count").toFixed(1)}</th>`;

@@ -41,10 +41,12 @@ Everything runs on your own infrastructure.
 - **Analysis** of the timeline — time in range, average glucose, estimated GMI,
   and high and low counts. It also measures the 2-hour glucose response after
   each logged meal.
-- **Daily intake table** (desktop) — carbs, calories, and mealtime insulin per
-  day, with a per-day average. Basal is excluded from the insulin total, because
+- **Daily intake table** (desktop) — average glucose, carbs, calories, and
+  mealtime insulin per day, with a per-day average. Basal is excluded from the insulin total, because
   one long-acting dose would hide the mealtime doses. A `*` marks a day where not
-  every meal carries the figure, so the total is a floor and not a fact. This
+  every meal carries the figure, so the total is a floor and not a fact. It also
+  marks a day the sensor did not cover end to end, because an average over half a
+  day does not compare to a whole one. This
   table keeps **its own range** (3d, 7d, 30d, or a day count you type), separate
   from the chart. Days always start at local midnight, so no row is a part day.
   Today is tagged **so far** and stays out of the average.

@@ -23,7 +23,9 @@ from fastapi.templating import Jinja2Templates
 
 from sugardaddy import __version__, notify
 from sugardaddy.analysis import (
+    daily_breakdown,
     daily_intake,
+    day_coverage,
     day_window_start,
     post_meal_responses,
     summarize,
@@ -46,6 +48,11 @@ log = logging.getLogger("sugardaddy.web")
 
 _HERE = Path(__file__).parent
 _DAY = 24 * 60 * 60
+
+# Below this much of a day covered by CGM data, its average glucose is really an
+# average of the hours the sensor was on — worth flagging rather than printing as
+# a flat fact next to days that were covered end to end.
+_THIN_DAY_COVERAGE = 0.7
 
 
 def _opt_num(v) -> float | None:
@@ -476,13 +483,45 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         now = now_epoch()
         start = day_window_start(now, tz, days)
         rows = daily_intake(db.meals_between(start, now), db.doses_between(start, now), tz)
+        # Glucose for the same days comes from daily_breakdown rather than a second
+        # rollup here: it already buckets by local day with the same key, so the two
+        # line up by construction (pinned by a test) and there is no new maths to
+        # get wrong. Only the average is used; the rest of its stats stay for report.
+        readings = db.readings_between(start, now)
+        glucose = {
+            d["day"]: d
+            for d in daily_breakdown(
+                readings,
+                cfg.target_low_mgdl,
+                cfg.target_high_mgdl,
+                cfg.web.units,
+                tz,
+            )
+        }
+        coverage = day_coverage(readings, tz)
         today = datetime.fromtimestamp(now, tz).strftime("%Y-%m-%d")
         for row in rows:
             # Day-first label, stamped here for the same reason as `local` above —
             # analysis.py stays free of display formatting.
             row["label"] = datetime.strptime(row["day"], "%Y-%m-%d").strftime("%a %d/%m")
             row["in_progress"] = row["day"] == today
-        return {"days": days, "from": start * 1000, "to": now * 1000, "rows": rows}
+            g = glucose.get(row["day"])
+            row["glucose_avg"] = g["avg"] if g else None
+            row["reading_count"] = g["n"] if g else 0
+            row["glucose_coverage"] = round(coverage.get(row["day"], 0.0), 3)
+            # A day the sensor only half-covered gives an average that isn't
+            # comparable to a full one, so it gets the same "*" as a partial carb
+            # total. Today is exempt: it is short by definition and already says so.
+            row["glucose_complete"] = (
+                row["in_progress"] or row["glucose_coverage"] >= _THIN_DAY_COVERAGE
+            )
+        return {
+            "days": days,
+            "units": cfg.web.units,
+            "from": start * 1000,
+            "to": now * 1000,
+            "rows": rows,
+        }
 
     # --- create (phone HTMX + desktop) ----------------------------------
 

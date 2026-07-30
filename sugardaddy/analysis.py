@@ -329,6 +329,40 @@ def insulin_summary(doses: list[InsulinDose]) -> dict:
     }
 
 
+def day_coverage(
+    readings: list[GlucoseReading], tz: tzinfo, *, max_gap_seconds: int = 600
+) -> dict[str, float]:
+    """Fraction of each local day that actually has CGM data behind it, 0..1.
+
+    Counting readings would mean knowing the cadence, and this app's history holds
+    more than one: the live poller writes roughly once a minute, while a Home
+    Assistant backfill or the source's own graph window arrive every five. A day
+    recorded at 5-minute cadence is not two thirds empty, so coverage is measured
+    in *time* rather than in rows.
+
+    Each consecutive pair within a day contributes the time between them, capped at
+    ``max_gap_seconds``. Past that cap the sensor was plainly not reporting — a
+    failed sensor, a flat phone, a day away from the receiver — so the span counts
+    as a hole rather than as covered time.
+
+    A day's average glucose is only comparable to another day's if both cover
+    roughly the same amount of day, which is what this exists to say.
+    """
+    by_day: dict[str, list[int]] = {}
+    for r in readings:
+        day = datetime.fromtimestamp(r.ts_utc, tz).strftime("%Y-%m-%d")
+        by_day.setdefault(day, []).append(r.ts_utc)
+
+    out: dict[str, float] = {}
+    for day, stamps in by_day.items():
+        stamps.sort()
+        covered = sum(
+            min(b - a, max_gap_seconds) for a, b in zip(stamps, stamps[1:])
+        )
+        out[day] = min(1.0, covered / 86400)
+    return out
+
+
 def day_window_start(now: int, tz: tzinfo, days: int) -> int:
     """Epoch of the local midnight that opens a window of the last ``days`` days.
 

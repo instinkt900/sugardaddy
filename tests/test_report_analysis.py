@@ -138,6 +138,49 @@ def test_day_window_start_survives_dst():
     assert start != naive and datetime.fromtimestamp(naive, syd).hour == 13
 
 
+def test_day_coverage_is_measured_in_time_not_rows():
+    # A full day at 5-minute cadence (288 rows) and one at 1-minute cadence (1440)
+    # are both fully covered. Counting rows would call the first one two-thirds
+    # empty, which is the trap this function exists to avoid: history is backfilled
+    # at 5 min, while the live poller writes about once a minute.
+    coarse = [r(i * 300, 6.0) for i in range(288)]
+    fine = [r(i * 60, 6.0) for i in range(1440)]
+    cov = analysis.day_coverage(coarse, timezone.utc)
+    assert cov["2026-07-23"] > 0.99, cov
+    assert analysis.day_coverage(fine, timezone.utc)["2026-07-23"] > 0.99
+
+
+def test_day_coverage_counts_a_sensor_gap_as_a_hole():
+    # 6 h of readings, then nothing. The single 18 h gap must not count as covered
+    # time just because a reading sits on either side of it.
+    morning = [r(i * 300, 6.0) for i in range(72)]      # 00:00–06:00
+    assert 0.24 < analysis.day_coverage(morning, timezone.utc)["2026-07-23"] < 0.26
+
+    # Same day, but with an 18 h hole in the middle rather than at the end.
+    split = [r(i * 300, 6.0) for i in range(36)] + [r(21 * 3600 + i * 300, 6.0) for i in range(36)]
+    cov = analysis.day_coverage(split, timezone.utc)["2026-07-23"]
+    assert cov < 0.3, cov  # ~6 h of data + one capped gap, not ~24 h
+
+
+def test_day_coverage_is_empty_without_readings():
+    assert analysis.day_coverage([], timezone.utc) == {}
+
+
+def test_daily_rollups_agree_on_day_keys():
+    # /api/daily merges daily_breakdown's glucose onto daily_intake's rows by the
+    # "day" key. If either side ever changed its key format or bucketing, the merge
+    # would quietly produce blank glucose columns rather than fail, so pin it here.
+    from datetime import timedelta
+
+    plus10 = timezone(timedelta(hours=10))
+    ts = T0 + 14 * 3600  # 2026-07-24 00:00 in +10 — the far side of a local midnight
+    intake = analysis.daily_intake([Meal(ts_utc=ts, name="dinner")], [], plus10)
+    glucose = analysis.daily_breakdown([r(14 * 3600, 8.0)], LOW, HIGH, UNITS, plus10)
+    assert intake[0]["day"] == glucose[0]["day"] == "2026-07-24", (intake, glucose)
+    # And the fields the merge reads are the ones daily_breakdown actually emits.
+    assert "avg" in glucose[0] and "n" in glucose[0], glucose[0]
+
+
 def test_daily_intake_excludes_basal():
     # The whole point of the column: a big nightly basal must not land in the same
     # total as the mealtime doses it sits beside.
