@@ -48,8 +48,8 @@ sugardaddy/            Python package
   analysis.py          PURE retrospective functions (summarize, post_meal_responses,
                        variability, daily_breakdown, hourly_profile, low_episodes,
                        insulin_summary, daily_intake, day_coverage,
-                       day_window_start, basal_status, carb_coverage) — no I/O,
-                       no clock, no config
+                       day_window_start, smooth_glucose, basal_status,
+                       carb_coverage) — no I/O, no clock, no config
   report.py            `report` command: window + tz resolution, calls analysis, text/JSON
   templates/           base.html, phone/index.html, desktop/dashboard.html, partials/recent.html
   static/              style.css, phone.js, desktop.js, common.js, sw.js, vendored libs, icons/

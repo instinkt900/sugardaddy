@@ -28,6 +28,7 @@ from sugardaddy.analysis import (
     day_coverage,
     day_window_start,
     post_meal_responses,
+    smooth_glucose,
     summarize,
 )
 from sugardaddy.config import Config, load_config
@@ -420,6 +421,14 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "glucose": [
                 {"t": r.ts_utc * 1000, "v": to_display(r.value_mgdl, cfg.web.units)}
                 for r in readings
+            ],
+            # Optional trend line with the sensor's ~30-minute ringing filtered
+            # out. Shipped alongside the raw series rather than instead of it —
+            # the smoothed line is easier to read but it is derived, and the
+            # readings are what actually happened.
+            "smoothed": [
+                {"t": p["ts_utc"] * 1000, "v": p["value"]}
+                for p in smooth_glucose(readings, cfg.web.units)
             ],
             "doses": [dose_json(d) for d in db.doses_between(start, end)],
             "meals": [meal_json(m) for m in db.meals_between(start, end)],

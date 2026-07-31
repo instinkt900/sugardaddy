@@ -30,6 +30,12 @@ _POST_MEAL_WINDOW = 2 * 60 * 60
 # seconds apart — bridges the odd dropped CGM sample without merging separate dips.
 _EPISODE_GAP = 20 * 60
 
+# Floor on the robust spread used for outlier rejection, in mg/dL. Readings are
+# whole mg/dL and frequently sit flat for several minutes, which drives MAD to
+# zero; without a floor, every 1 mg/dL neighbour of a plateau looks like an
+# infinite-sigma outlier and the filter eats the signal it was meant to clean.
+_MIN_SPREAD_MGDL = 2.0
+
 
 @dataclass
 class Summary:
@@ -327,6 +333,90 @@ def insulin_summary(doses: list[InsulinDose]) -> dict:
         "total_units": round(sum(d.units for d in doses), 1),
         "by_kind": by_kind,
     }
+
+
+def smooth_glucose(
+    readings: list[GlucoseReading],
+    units: str,
+    *,
+    window_minutes: float = 31.0,
+    reject_sigmas: float = 3.0,
+    min_samples: int = 5,
+) -> list[dict]:
+    """A trend line through the readings: outliers rejected, then averaged.
+
+    CGM traces carry a persistent wobble of roughly ±0.8 mmol/L that alternates
+    up-down-up on a 25–35 minute cycle. It is not the bloodstream doing that — it
+    is the sensor's lag-compensating filter ringing, plus local perfusion changes
+    at the sensor site. This function exists to take it out so the underlying
+    movement is legible.
+
+    Two stages, because they answer different problems:
+
+    * A **Hampel filter** replaces any reading that sits more than
+      ``reject_sigmas`` robust deviations from its neighbourhood's median. That
+      catches a genuine one-off — a dropped-out sample, a compression spike —
+      without touching a real excursion, whose neighbours have moved with it.
+      Median/MAD rather than mean/σ deliberately: an outlier can't drag the
+      statistic used to detect it.
+    * A **centred mean** over ``window_minutes`` then cancels the oscillation.
+      The window wants to span one whole cycle — averaging a full period of
+      something that swings symmetrically leaves nothing of it behind — which is
+      where the 31-minute default comes from. Shorten it and the trend line just
+      tracks the ringing it was meant to remove.
+
+    Windows are measured in *time*, not in samples, so a gap doesn't quietly widen
+    them. Where a window holds fewer than ``min_samples`` readings the point is
+    skipped rather than guessed, so the line breaks over a sensor outage instead of
+    drawing a confident average across it.
+
+    Centred, not trailing: this is a retrospective chart, so using both sides is
+    both more accurate and free of lag. The trade is that the most recent half
+    window is built from fewer readings — true of the oldest half too — which is
+    the honest cost of not inventing a value.
+    """
+    if not readings:
+        return []
+
+    ts = [r.ts_utc for r in readings]
+    raw = [r.value_mgdl for r in readings]
+    n = len(readings)
+    half = window_minutes * 60 / 2
+
+    def window_bounds():
+        """Yield (i, lo, hi) index bounds of the time window centred on each point.
+        Both pointers only move forward, so the whole scan stays linear."""
+        lo = hi = 0
+        for i in range(n):
+            while ts[lo] < ts[i] - half:
+                lo += 1
+            while hi + 1 < n and ts[hi + 1] <= ts[i] + half:
+                hi += 1
+            yield i, lo, hi
+
+    # --- stage 1: reject outliers -------------------------------------------
+    cleaned = list(raw)
+    for i, lo, hi in window_bounds():
+        window = raw[lo : hi + 1]
+        med = statistics.median(window)
+        # 1.4826 × MAD estimates σ for normally-distributed data. Readings are
+        # stored as whole mg/dL and often sit dead flat for minutes, which makes
+        # MAD zero and every neighbour an "infinite" outlier — hence the floor.
+        spread = max(1.4826 * statistics.median([abs(v - med) for v in window]), _MIN_SPREAD_MGDL)
+        if abs(raw[i] - med) > reject_sigmas * spread:
+            cleaned[i] = med
+
+    # --- stage 2: average ----------------------------------------------------
+    out = []
+    for i, lo, hi in window_bounds():
+        window = cleaned[lo : hi + 1]
+        if len(window) < min_samples:
+            continue
+        out.append({
+            "ts_utc": ts[i],
+            "value": to_display(sum(window) / len(window), units),
+        })
+    return out
 
 
 def day_coverage(

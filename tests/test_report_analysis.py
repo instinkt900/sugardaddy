@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sugardaddy import analysis, iob  # noqa: E402
-from sugardaddy.constants import mmol_to_mgdl  # noqa: E402
+from sugardaddy.constants import mgdl_to_mmol, mmol_to_mgdl  # noqa: E402
 from sugardaddy.models import GlucoseReading, InsulinDose, Meal, MealItem  # noqa: E402
 
 UNITS = "mmol/L"
@@ -136,6 +136,52 @@ def test_day_window_start_survives_dst():
     assert datetime.fromtimestamp(start, syd).isoformat() == "2026-04-04T00:00:00+11:00"
     naive = now - 3 * 86400  # what a rolling window would have given
     assert start != naive and datetime.fromtimestamp(naive, syd).hour == 13
+
+
+def test_smooth_cancels_the_sensor_oscillation():
+    # The real artifact this exists for: ~0.8 mmol/L swinging up-down on a ~30 min
+    # cycle, riding on a flat 8.0. A window spanning one whole period should leave
+    # almost none of it behind.
+    import math
+
+    readings = [
+        r(i * 60, 8.0 + 0.8 * math.sin(2 * math.pi * i / 30))
+        for i in range(240)  # 4 h of 1-minute data
+    ]
+    out = analysis.smooth_glucose(readings, UNITS)
+    # Ignore the first/last half-window, where the window is only partly filled.
+    middle = [p["value"] for p in out if 20 * 60 <= p["ts_utc"] - T0 <= 200 * 60]
+    assert middle, out
+    worst = max(abs(v - 8.0) for v in middle)
+    assert worst < 0.15, f"oscillation survived smoothing: worst deviation {worst}"
+    # And the raw series really did carry the swing we just removed.
+    assert max(abs(mgdl_to_mmol(x.value_mgdl) - 8.0) for x in readings) > 0.75
+
+
+def test_smooth_rejects_a_lone_spike_but_keeps_a_real_move():
+    # One wild reading in an otherwise flat trace must not drag the line.
+    flat = [r(i * 60, 6.0) for i in range(120)]
+    flat[60] = r(60 * 60, 14.0)  # single absurd sample
+    out = analysis.smooth_glucose(flat, UNITS)
+    at_spike = [p["value"] for p in out if abs(p["ts_utc"] - (T0 + 60 * 60)) < 90]
+    assert at_spike and max(at_spike) < 6.2, at_spike
+
+    # A genuine sustained shift is a different thing and must survive: 6 -> 10 and
+    # stay there. Smoothing may round the corner, it must not erase the step.
+    step = [r(i * 60, 6.0) for i in range(120)] + [r((120 + i) * 60, 10.0) for i in range(120)]
+    out = analysis.smooth_glucose(step, UNITS)
+    ends = [p["value"] for p in out if p["ts_utc"] - T0 > 200 * 60]
+    assert ends and min(ends) > 9.8, ends
+
+
+def test_smooth_breaks_over_a_sensor_gap_instead_of_guessing():
+    # 10 min of data, an 8 h hole, then 10 min more. Points whose window is nearly
+    # empty are skipped rather than averaged across the gap.
+    before = [r(i * 60, 6.0) for i in range(10)]
+    after = [r(8 * 3600 + i * 60, 12.0) for i in range(10)]
+    out = analysis.smooth_glucose(before + after, UNITS, min_samples=5)
+    assert all(p["value"] < 7 or p["value"] > 11 for p in out), out
+    assert analysis.smooth_glucose([], UNITS) == []
 
 
 def test_day_coverage_is_measured_in_time_not_rows():

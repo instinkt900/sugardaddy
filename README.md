@@ -27,6 +27,10 @@ Everything runs on your own infrastructure.
     the glucose line, the target band, and markers for doses and meals. Pick any
     date range. Sort the tables, and add, edit, or delete rows inline. Analysis
     panels sit alongside. This UI also manages the food library and saved meals.
+    A **smoothed glucose** series is available from the chart legend. It rejects
+    outliers and averages over about half an hour, which removes the sensor wobble
+    described in [Notes and limitations](#notes-and-limitations). The raw readings
+    stay on the chart, because the smoothed line is derived and they are not.
 - **Composite meals** — a meal is a plate of **foods**, each with a count, for
   example 1 sandwich, 1 juice, and 2 biscuits. The app totals the carbs and
   calories.
@@ -423,8 +427,23 @@ export only makes sense as a one-off seed.
   bumps a required app-version header, which pauses ingestion until a new
   `pylibrelinkup` ships. Manual meal and dose logging keeps working. Pin the
   dependency, and update it when this happens.
-- Glucose granularity is whatever LibreLinkUp reports, about 5 minutes. This is
-  not real-time data.
+- Glucose granularity is whatever LibreLinkUp reports, and in practice that is
+  one reading a minute, in whole mg/dL — measured, not assumed. Backfilled
+  history from Home Assistant is coarser, about every five minutes. Anything
+  deciding whether a stretch of data is complete must therefore measure covered
+  *time*, not count rows, or it will call a backfilled day two thirds empty. This
+  is still not real-time data.
+- **The trace carries a wobble of about ±0.8 mmol/L that is not your blood
+  sugar.** Measured over 9 days of this database: 191 transient excursions, a
+  median amplitude of 14 mg/dL, and peaks and dips balanced 96 to 95. Of
+  excursions within 30 minutes of each other, 84 alternate direction and only 4
+  repeat, so a peak nearly always pulls a dip after it. The amplitude does not
+  scale with the glucose level (r = +0.16), which rules out simple proportional
+  measurement error. The pattern is consistent with the sensor's lag-compensating
+  filter ringing, plus local perfusion and pressure changes at the sensor site —
+  real enough, but local to one patch of skin rather than systemic. Treat single
+  points accordingly, prefer the aggregates, and turn on the smoothed series to
+  read the trend.
 - Long-term history accumulates from the first run, plus the optional HA seed.
   The live API exposes about 12h through `graph` and 14 days through `logbook`.
 ```

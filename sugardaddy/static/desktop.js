@@ -208,6 +208,7 @@
     const mealY = yMin + (yMax - yMin) * 0.06;
     return {
       glucose,
+      smoothed: (data.smoothed || []).map((p) => ({ x: p.t, y: p.v })),
       iob: (data.iob || []).map((p) => ({ x: p.t, y: p.v })),
       activity: (data.activity || []).map((p) => ({ x: p.t, y: p.v })),
       doses: data.doses.map((d) => ({ x: d.t, y: doseY, kind: d.kind, label: `${d.units}u ${d.kind}` })),
@@ -230,7 +231,7 @@
     // at each auto-refresh — which made a chart impossible to read for long.
     if (chart) {
       const sets = chart.data.datasets;
-      [s.glucose, s.doses, s.meals, s.iob, s.activity].forEach((d, i) => { sets[i].data = d; });
+      [s.glucose, s.smoothed, s.doses, s.meals, s.iob, s.activity].forEach((d, i) => { sets[i].data = d; });
       chart.options.scales.x.min = data.from;
       chart.options.scales.x.max = data.to;
       chart.update();
@@ -242,6 +243,13 @@
         datasets: [
           { type: "line", label: "Glucose", data: s.glucose, borderColor: "#4f8cff",
             borderWidth: 2, pointRadius: 0, tension: 0.3, parsing: false },
+          // Same data with the sensor's ~30-minute ringing filtered out (see
+          // analysis.smooth_glucose). Drawn over the raw line in a lighter tint of
+          // the same blue, so it reads as "this line, calmed down" rather than as a
+          // second measurement. Toggle it off from the legend like any other series.
+          { type: "line", label: "Glucose (smoothed)", data: s.smoothed,
+            borderColor: "#bcd3ff", borderWidth: 2, borderDash: [6, 3],
+            pointRadius: 0, tension: 0.3, fill: false, parsing: false },
           { type: "scatter", label: "Insulin", data: s.doses,
             borderColor: (c) => SD.doseColor(c.raw && c.raw.kind),
             backgroundColor: (c) => SD.doseColor(c.raw && c.raw.kind),
