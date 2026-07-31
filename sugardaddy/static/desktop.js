@@ -272,8 +272,12 @@
           // Active-insulin (IOB) curve on its own right-hand axis, translucent so
           // it never hides anything. order:2 puts it at the back of the stack:
           // smoothed trend (0) in front of the raw readings (1) in front of these.
+          // Held back on purpose: it is a large filled area, so at full strength
+          // it carries more visual weight than the glucose line it is meant to
+          // give context to. Faint enough to read the shape from, quiet enough
+          // that the eye doesn't land on it first.
           { type: "line", label: "Insulin active (u)", data: s.iob, yAxisID: "y1",
-            borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.15)",
+            borderColor: "rgba(167,139,250,0.45)", backgroundColor: "rgba(167,139,250,0.07)",
             borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, parsing: false, order: 2 },
           // Insulin action *rate* (derivative of IOB) on a hidden auto-scaled
           // axis — dashed line, no fill, so it reads as the "how hard it's working
