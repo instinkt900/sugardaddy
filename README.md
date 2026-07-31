@@ -27,10 +27,13 @@ Everything runs on your own infrastructure.
     the glucose line, the target band, and markers for doses and meals. Pick any
     date range. Sort the tables, and add, edit, or delete rows inline. Analysis
     panels sit alongside. This UI also manages the food library and saved meals.
-    A **smoothed glucose** series is available from the chart legend. It rejects
-    outliers and averages over about half an hour, which removes the sensor wobble
-    described in [Notes and limitations](#notes-and-limitations). The raw readings
-    stay on the chart, because the smoothed line is derived and they are not.
+    The bold line is **smoothed glucose**: outliers rejected, then averaged over
+    about half an hour, which removes the sensor wobble described in
+    [Notes and limitations](#notes-and-limitations). The raw **sensor readings**
+    stay on the chart behind it, in faint grey — they are what was actually
+    measured, and the smoothed line is derived from them. Toggle either from the
+    legend. The "now" badge always reads the latest real reading, never the
+    smoothed value.
 - **Composite meals** — a meal is a plate of **foods**, each with a count, for
   example 1 sandwich, 1 juice, and 2 biscuits. The app totals the carbs and
   calories.

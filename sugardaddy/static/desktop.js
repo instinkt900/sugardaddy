@@ -241,32 +241,46 @@
     chart = new Chart(ctx, {
       data: {
         datasets: [
-          { type: "line", label: "Glucose", data: s.glucose, borderColor: "#4f8cff",
-            borderWidth: 2, pointRadius: 0, tension: 0.3, parsing: false },
-          // Same data with the sensor's ~30-minute ringing filtered out (see
-          // analysis.smooth_glucose). Drawn over the raw line in a lighter tint of
-          // the same blue, so it reads as "this line, calmed down" rather than as a
-          // second measurement. Toggle it off from the legend like any other series.
+          // The raw readings, kept but pushed back: thin, grey and translucent.
+          // They are what the sensor actually said, so they stay on the chart and
+          // stay legible — but roughly ±0.8 mmol/L of what they show is the
+          // sensor's own ringing (see analysis.smooth_glucose), and at full
+          // strength that noise is what the eye follows. Dataset 0 by design:
+          // lastValueTag reads it for the "now" badge, which must be a real
+          // reading rather than a derived one.
+          { type: "line", label: "Sensor readings", data: s.glucose,
+            borderColor: "rgba(139,144,160,0.45)", borderWidth: 1,
+            pointRadius: 0, tension: 0.3, parsing: false, order: 1 },
+          // The trend, with that ringing filtered out. This is the line to read,
+          // so it gets the accent colour and the weight. Labelled "smoothed"
+          // rather than plain "Glucose" on purpose: it is derived, and the legend
+          // should not imply it is the measurement.
           { type: "line", label: "Glucose (smoothed)", data: s.smoothed,
-            borderColor: "#bcd3ff", borderWidth: 2, borderDash: [6, 3],
-            pointRadius: 0, tension: 0.3, fill: false, parsing: false },
+            borderColor: "#4f8cff", borderWidth: 2,
+            pointRadius: 0, tension: 0.3, fill: false, parsing: false, order: 0 },
+          // order:1 alongside the raw readings, not for the drawing (these markers
+          // sit at the foot of the chart and overlap nothing) but for the legend,
+          // which Chart.js sorts by order — at 0 they wedged themselves between
+          // the two glucose series.
           { type: "scatter", label: "Insulin", data: s.doses,
             borderColor: (c) => SD.doseColor(c.raw && c.raw.kind),
             backgroundColor: (c) => SD.doseColor(c.raw && c.raw.kind),
-            pointStyle: "triangle", radius: 7, parsing: false },
+            pointStyle: "triangle", radius: 7, parsing: false, order: 1 },
           { type: "scatter", label: "Meal", data: s.meals, borderColor: "#ffb020",
-            backgroundColor: "#ffb020", pointStyle: "rectRot", radius: 7, parsing: false },
-          // Active-insulin (IOB) curve on its own right-hand axis; drawn behind
-          // the glucose line (order:1) and translucent so it never hides it.
+            backgroundColor: "#ffb020", pointStyle: "rectRot", radius: 7,
+            parsing: false, order: 1 },
+          // Active-insulin (IOB) curve on its own right-hand axis, translucent so
+          // it never hides anything. order:2 puts it at the back of the stack:
+          // smoothed trend (0) in front of the raw readings (1) in front of these.
           { type: "line", label: "Insulin active (u)", data: s.iob, yAxisID: "y1",
             borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.15)",
-            borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, parsing: false, order: 1 },
+            borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, parsing: false, order: 2 },
           // Insulin action *rate* (derivative of IOB) on a hidden auto-scaled
           // axis — dashed line, no fill, so it reads as the "how hard it's working
           // now" companion to the filled on-board area. Shape/timing is the point.
           { type: "line", label: "Insulin activity (u/hr)", data: s.activity, yAxisID: "y2",
             borderColor: "#2dd4bf", borderWidth: 1.5, borderDash: [5, 4],
-            pointRadius: 0, tension: 0.3, fill: false, parsing: false, order: 1 },
+            pointRadius: 0, tension: 0.3, fill: false, parsing: false, order: 2 },
         ],
       },
       options: {
