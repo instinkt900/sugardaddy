@@ -302,7 +302,11 @@
               if (c.raw.label) return c.raw.label;
               if (c.dataset.yAxisID === "y1") return `${c.parsed.y} u active`;
               if (c.dataset.yAxisID === "y2") return `${c.parsed.y} u/hr acting`;
-              return `${c.parsed.y} ${chartPayload.units}`;
+              // The smoothed series carries an extra decimal so the line renders
+              // as a curve rather than a staircase, but a glucose value is quoted
+              // to 0.1 mmol/L (or a whole mg/dL) — round it back for the text.
+              const dp = chartPayload.units === "mmol/L" ? 1 : 0;
+              return `${c.parsed.y.toFixed(dp)} ${chartPayload.units}`;
             },
           } },
         },

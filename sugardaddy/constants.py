@@ -39,12 +39,19 @@ def mmol_to_mgdl(mmol: float) -> float:
     return mmol * MGDL_PER_MMOL
 
 
-def to_display(mgdl: float, units: str) -> float:
+def to_display(mgdl: float, units: str, *, extra_dp: int = 0) -> float:
     """Convert a stored mg/dL value to the configured display unit, rounded the
-    way each unit is conventionally shown (mmol/L to 1 dp, mg/dL to integer)."""
+    way each unit is conventionally shown (mmol/L to 1 dp, mg/dL to integer).
+
+    ``extra_dp`` asks for finer rounding, and exists for values that are drawn
+    rather than read. A smoothed trend line drifts by a few hundredths at a time,
+    so snapping it to the conventional 0.1 mmol/L turns a gentle slope into a
+    staircase of flat runs and sudden steps. Anything shown as *text* should stay
+    at the conventional precision — the extra digits are real for a mean of many
+    readings, but they are not what a glucose value is quoted to."""
     if units == "mmol/L":
-        return round(mgdl_to_mmol(mgdl), 1)
-    return round(mgdl)
+        return round(mgdl_to_mmol(mgdl), 1 + extra_dp)
+    return round(mgdl, extra_dp) if extra_dp else round(mgdl)
 
 
 def trend_arrow(trend: int | None) -> str:

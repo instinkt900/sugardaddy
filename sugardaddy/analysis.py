@@ -414,7 +414,11 @@ def smooth_glucose(
             continue
         out.append({
             "ts_utc": ts[i],
-            "value": to_display(sum(window) / len(window), units),
+            # One digit finer than the conventional rounding: this is a mean of
+            # ~31 readings, so the extra precision is real, and without it the
+            # line is drawn as a staircase (steps between points average ~0.04
+            # mmol/L, well under the 0.1 the display unit rounds to).
+            "value": to_display(sum(window) / len(window), units, extra_dp=1),
         })
     return out
 

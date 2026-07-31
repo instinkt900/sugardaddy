@@ -174,6 +174,27 @@ def test_smooth_rejects_a_lone_spike_but_keeps_a_real_move():
     assert ends and min(ends) > 9.8, ends
 
 
+def test_smooth_keeps_enough_precision_to_draw_a_curve():
+    # Measured on real data, the smoothed line moves about 0.04 mmol/L per point.
+    # Rounded to the conventional 0.1 that becomes runs of identical values with
+    # sudden steps between them, and the chart draws a staircase, not a line.
+    ramp = [r(i * 60, 6.0 + i * 0.04) for i in range(120)]
+    vals = [p["value"] for p in analysis.smooth_glucose(ramp, UNITS)]
+    repeats = sum(1 for a, b in zip(vals, vals[1:]) if a == b)
+    assert repeats / len(vals) < 0.1, f"{repeats}/{len(vals)} points repeat — line will look blocky"
+
+    # Slope-independent version of the same property: whatever the data does, the
+    # series must resolve finer than the display convention would. On a genuinely
+    # flat stretch a flat line is correct, so counting repeats alone proves nothing.
+    flat = [r(i * 60, 6.0 + i * 0.002) for i in range(240)]
+    out = [p["value"] for p in analysis.smooth_glucose(flat, UNITS)]
+    assert len(set(out)) > 3 * len({round(v, 1) for v in out}), sorted(set(out))[:5]
+
+    # mg/dL is quoted as a whole number, and needs the same treatment.
+    v2 = [p["value"] for p in analysis.smooth_glucose(flat, "mg/dL")]
+    assert len(set(v2)) > 3 * len({round(v) for v in v2})
+
+
 def test_smooth_breaks_over_a_sensor_gap_instead_of_guessing():
     # 10 min of data, an 8 h hole, then 10 min more. Points whose window is nearly
     # empty are skipped rather than averaged across the gap.
