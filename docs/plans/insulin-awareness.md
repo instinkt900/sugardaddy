@@ -56,6 +56,36 @@ Both are the same idea at different fidelity. The awareness nudge is the reliabl
 first deliverable; the full calculator is a thing to build, tune, and play with as
 the data justifies it.
 
+### The load this is actually lifting — in the user's words
+
+Written 2026-08-01, when the live reference was added to the phone meal form
+(Layer 4) against this document's own earlier ruling. It is the clearest statement
+of what the app is for, so it governs how every figure here is worded:
+
+> the whole idea of this app is not to tell the user what to do, but it should be
+> a second reference point for the user. that is, as a diabetic im expected to
+> always be in the right frame of mind, remember my doses and keep track of times
+> and always be a good judge of meal sizes and insulin doses. its a lot to
+> constantly carry. the plan for this app is to be a mechanical reference point so
+> i can base my initial judgements up against empirical evidence and suggested
+> data points. it is still expected for me to use my own judgement but this allows
+> me to view the current state of things at a glance. its expected the user is to
+> know that the app is not a director but a guide. an extra reference point.
+
+Two things follow, and they pull in opposite directions on purpose:
+
+- **The cost being paid is cognitive load, not ignorance.** The user already knows
+  how to make the call; what's expensive is holding the whole state — doses,
+  times, meal sizes, what's still active — in their head at every meal, in every
+  mood. The app is the mechanical half of that, so the judgement half gets a fair
+  hearing instead of running on fumes. A feature that only fires retrospectively
+  doesn't lift this load at all; it audits it afterwards.
+- **A second reference point is not a first one.** "Guide" here means a map, not
+  an instruction — the app never carries the decision, it just makes sure the
+  decision is made against something. Which is exactly why the number must show
+  its working and admit its gaps: an anchor you can't inspect isn't a second
+  reference point, it's a replacement for the first one.
+
 ---
 
 ## Background concepts
@@ -168,18 +198,35 @@ Design rules:
 - Once carb coverage is high enough, do the same for ICR from meal boluses.
 
 ### Layer 4 — bolus calculator / calculated reference (stretch goal, experimental)
-**Status: a retrospective slice has shipped.** `bolus.py` holds the pure formula
+**Status: shipped, retrospectively and live.** `bolus.py` holds the pure formula
 (carbs/ICR + (BG−target)/ISF − IOB) returning *components*, never a bare number;
 `analysis.bolus_backtest` replays it against every rapid dose actually given.
-Surfaces in two retrospective places only — a `report` section and a `Ref`/`Δ Ref`
-column on the desktop post-meal table. **Deliberately absent from the phone
-logging flow**, per the gate below: this answers "how well would it have matched
-what I decided?", not "what should I take?".
+Three surfaces:
 
-Gated on `[insulin].isf` being set; unset means the columns and the report
-section do not exist at all. `isf`/`icr`/`target_bg` are config-only and never
-inferred. Partial figures (e.g. carbs never logged) are marked `*` and excluded
-from the agreement stats, so an incomplete "0.0u" can't read as "give nothing".
+- a `report` section and a `Ref`/`Δ Ref` column on the desktop post-meal table —
+  retrospective: "how well would it have matched what I decided?";
+- **live on the phone meal form**, above the Log meal button, via
+  `GET /api/bolus-reference?carbs=N` — the same formula against the plate being
+  built, current glucose and current IOB.
+
+The live panel was originally ruled out here, on the grounds that a figure in the
+logging flow is read as an instruction in a way a table column is not. That ruling
+was wrong about which risk mattered. Checking the desktop mid-meal was cumbersome
+enough that the cross-check wasn't happening at all, and a reference point that
+only exists after the fact does nothing about the load it was built to carry — see
+[The load this is actually lifting](#the-load-this-is-actually-lifting--in-the-users-words).
+The user is expected to know the app is a guide, not a director; the design job is
+to make sure the panel keeps earning that reading. **Every safeguard below is
+therefore load-bearing, not decorative**: it shows its components, marks
+incomplete figures, drops the correction rather than correcting off a reading
+older than 20 minutes, and is worded as the formula's read on the user's own
+ISF/ICR — never as an amount to give.
+
+Gated on `[insulin].isf` being set; unset means the columns, the report section
+and the phone panel do not exist at all. `isf`/`icr`/`target_bg` are config-only
+and never inferred. Partial figures (e.g. carbs never logged) are marked `*` and
+excluded from the agreement stats, so an incomplete "0.0u" can't read as "give
+nothing".
 
 Still open: the awareness nudge (Layer 2) remains the more useful daily feature,
 and the agreement numbers stay meaningless until ISF/ICR are real and the history
@@ -199,8 +246,11 @@ number as something to *reconcile against*, per the "says 12, I feel 6" example.
 - Clearly labelled experimental / a cross-check, not a guide; opt-in, not the
   default view.
 - Accuracy tracks data: gate on configured ISF/ICR and enough clean history, and
-  show it as rough (and say so) until then. Prototyping it early for fun is fine;
-  wiring it into the daily logging flow waits for the data to justify it.
+  show it as rough (and say so) until then.
+- In the logging flow specifically: never styled as the primary action (the log
+  button stays the loudest thing on the form), and never phrased in the
+  imperative. If it can't say what it's built on, it says so instead of rounding
+  a missing input to zero.
 
 ---
 
@@ -221,6 +271,11 @@ number as something to *reconcile against*, per the "says 12, I feel 6" example.
 - Guidance quality tracks data quality — gate ISF/ICR features on enough clean
   events / carb coverage, and say so rather than presenting a shaky figure as
   solid.
+- **The boundary is "director vs. reference point", not "live vs. retrospective".**
+  Timing was the wrong axis to police (see the Layer 4 reversal). What keeps a
+  figure on the right side of the line is that it is inspectable, honest about
+  what it's missing, and phrased as an observation rather than an imperative —
+  not that it arrived too late to act on.
 
 ---
 

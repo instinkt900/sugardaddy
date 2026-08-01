@@ -31,6 +31,7 @@ from sugardaddy.analysis import (
     smooth_glucose,
     summarize,
 )
+from sugardaddy.bolus import bolus_reference
 from sugardaddy.config import Config, load_config
 from sugardaddy.iob import active_activity, active_iob, activity_phase, is_rapid
 from sugardaddy.constants import INSULIN_KINDS, MEAL_TYPES, to_display, trend_arrow
@@ -54,6 +55,13 @@ _DAY = 24 * 60 * 60
 # average of the hours the sensor was on — worth flagging rather than printing as
 # a flat fact next to days that were covered end to end.
 _THIN_DAY_COVERAGE = 0.7
+
+# How old the latest reading may be before the *live* bolus reference stops
+# correcting against it. Retrospective figures don't have this problem — they read
+# the glucose that was actually there — but a correction computed off a reading
+# from an hour ago is a guess wearing a decimal point, so past this the glucose
+# half is dropped and the figure is marked incomplete instead.
+_REF_STALE_SECONDS = 20 * 60
 
 
 def _opt_num(v) -> float | None:
@@ -383,6 +391,59 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     @app.get("/api/current")
     def api_current():
         return current_context()
+
+    @app.get("/api/bolus-reference")
+    def api_bolus_reference(request: Request):
+        """EXPERIMENTAL live reference for the meal currently being built.
+
+        The same `bolus.bolus_reference` arithmetic the desktop post-meal table
+        replays retrospectively, evaluated against *now* instead: current glucose,
+        current rapid-acting IOB, and whatever carbs the phone's plate adds up to
+        so far. It answers "what does the formula make of this plate?" so the user
+        can reconcile it against the dose they were already going to give — it is
+        not, and must never be worded as, an instruction to give that amount.
+
+        `carbs` is optional: an empty plate still yields the correction half, which
+        `missing` flags as incomplete so a small figure can't read as "no dose
+        needed" when the food simply hasn't been entered yet.
+
+        Gated on a configured ISF exactly like the retrospective surfaces —
+        `enabled: false` is the whole answer when there is none, and the phone
+        hides its panel on that alone rather than showing a guessed number.
+        """
+        if cfg.isf_mgdl is None:
+            return {"enabled": False}
+
+        now = now_epoch()
+        doses = db.doses_between(now - cfg.insulin.dia_minutes * 60, now)
+        iob = active_iob(
+            doses,
+            now,
+            dia_minutes=cfg.insulin.dia_minutes,
+            peak_minutes=cfg.insulin.peak_minutes,
+        )
+        r = db.latest_reading()
+        minutes_ago = round((now - r.ts_utc) / 60) if r else None
+        stale = r is None or (now - r.ts_utc) > _REF_STALE_SECONDS
+        ref = bolus_reference(
+            bg_mgdl=None if stale else r.value_mgdl,
+            target_mgdl=cfg.bolus_target_mgdl,
+            isf_mgdl_per_unit=cfg.isf_mgdl,
+            icr_g_per_unit=cfg.insulin.icr,
+            carbs_g=_opt_num(request.query_params.get("carbs")),
+            iob_units=iob,
+        )
+        return {
+            "enabled": True,
+            "units": cfg.web.units,
+            # The inputs behind the figure, so the panel can show what it read
+            # rather than just what it concluded.
+            "glucose": to_display(r.value_mgdl, cfg.web.units) if r else None,
+            "minutes_ago": minutes_ago,
+            "glucose_stale": stale,
+            "target": to_display(cfg.bolus_target_mgdl, cfg.web.units),
+            "ref": ref.as_dict(),
+        }
 
     @app.get("/api/timeline")
     def api_timeline(request: Request):

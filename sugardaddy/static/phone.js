@@ -14,6 +14,9 @@
       const which = tab.dataset.tab;
       document.getElementById("tab-insulin").classList.toggle("hidden", which !== "insulin");
       document.getElementById("tab-meal").classList.toggle("hidden", which !== "meal");
+      // The reference goes stale while the tab is closed (it's only refreshed
+      // when visible), so bring it up to date on the way in.
+      if (which === "meal") updateMealRef();
     });
   });
 
@@ -180,7 +183,21 @@
       .catch(() => {});
   }
 
-  function refresh() { updateCurrent(); draw(); }
+  // Assigned by the meal builder below; a no-op when the builder isn't on the
+  // page so the refresh cycle doesn't need to know whether it exists.
+  let updateMealRef = () => {};
+  function mealTabOpen() {
+    const t = document.getElementById("tab-meal");
+    return t && !t.classList.contains("hidden");
+  }
+
+  function refresh() {
+    updateCurrent();
+    draw();
+    // Glucose and IOB both move under a plate that hasn't changed, so the
+    // reference has to follow the clock as well as the form.
+    if (mealTabOpen()) updateMealRef();
+  }
 
   // ================= combobox factory ========================================
   // A self-contained dropdown (native <datalist> is unreliable on mobile).
@@ -289,17 +306,108 @@
       renderTotals();
     }
 
-    function renderTotals() {
-      let c = 0, cal = 0, hasC = false, hasCal = false;
+    // Carb total for the plate, plus whether *every* item contributed one. A
+    // plate where half the items have no carb count still totals to a number,
+    // and that number is a floor — the reference panel has to say so.
+    function plateCarbs() {
+      let total = 0, counted = 0;
       plate.forEach((it) => {
-        if (it.carbs_g != null) { c += it.carbs_g * it.count; hasC = true; }
+        if (it.carbs_g != null) { total += it.carbs_g * it.count; counted += 1; }
+      });
+      return {
+        grams: counted ? Math.round(total * 10) / 10 : null,
+        complete: plate.length > 0 && counted === plate.length,
+      };
+    }
+
+    function renderTotals() {
+      let cal = 0, hasCal = false;
+      plate.forEach((it) => {
         if (it.calories != null) { cal += it.calories * it.count; hasCal = true; }
       });
+      const carbs = plateCarbs();
       const bits = [];
-      if (hasC) bits.push(`${Math.round(c * 10) / 10} g carbs`);
+      if (carbs.grams != null) bits.push(`${carbs.grams} g carbs`);
       if (hasCal) bits.push(`${Math.round(cal)} cal`);
       totalsEl.textContent = plate.length ? bits.join(" · ") : "";
+      refreshRef();
     }
+
+    // ---- experimental bolus reference (see sugardaddy/bolus.py) -------------
+    // The same formula the desktop replays against past meals, run against the
+    // plate being built: a figure to reconcile the intended dose against, never
+    // an amount to give. It shows its components so a gap against the user's own
+    // judgement is diagnosable, and it names the inputs it went without rather
+    // than quietly treating them as zero.
+    const refEl = document.getElementById("meal-ref");
+    const refVal = refEl && refEl.querySelector(".mr-val");
+    const refParts = document.getElementById("mr-parts");
+    const refWhy = document.getElementById("mr-why");
+    let refOff = false;   // no ISF configured: the panel doesn't exist at all
+    let refTimer = null;
+
+    const uStr = (n) => `${Math.round(n * 10) / 10}u`;
+    const signedU = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${uStr(Math.abs(n))}`;
+
+    // Everything the figure had to do without, worst first. The plate's own carb
+    // gaps are only visible here (the server sees a total, not which items fed
+    // it), so they're folded in alongside the server's `missing` list.
+    function refReasons(missing, d, carbsComplete) {
+      const why = [];
+      if (missing.includes("glucose")) {
+        // "stale" and "none at all" are both a dropped correction, but they are
+        // different problems — one waits, the other needs the sensor looked at.
+        why.push(d.glucose == null ? "there's no glucose reading yet"
+                                   : "the last glucose reading is too old to correct against");
+      }
+      if (missing.includes("isf")) why.push("no ISF is configured");
+      if (missing.includes("icr")) why.push("no carb ratio is configured");
+      if (missing.includes("carbs")) why.push("no carbs are entered yet");
+      else if (!carbsComplete) why.push("not every item on the plate has a carb count");
+      return why;
+    }
+
+    function renderRef(d, carbsComplete) {
+      if (!refEl) return;
+      if (!d.enabled) { refOff = true; refEl.hidden = true; return; }
+      const r = d.ref || {};
+      // A "*" marks a figure built from only some of its inputs — the same
+      // convention as the desktop table and the report, so an incomplete 1.2u
+      // can't be read as "barely dose here" when the carbs simply aren't in yet.
+      const why = refReasons(r.missing || [], d, carbsComplete);
+      refEl.hidden = false;
+      refEl.classList.toggle("mr-partial", why.length > 0);
+      refVal.textContent =
+        r.suggested_units == null ? "—" : `≈${uStr(r.suggested_units)}${why.length ? "*" : ""}`;
+
+      const bits = [];
+      if (r.carb_units != null) bits.push(`${uStr(r.carb_units)} carbs`);
+      if (r.correction_units != null) bits.push(`${signedU(r.correction_units)} correction`);
+      if (r.iob_units) bits.push(`−${uStr(r.iob_units)} active`);
+      if (d.glucose != null && !d.glucose_stale) {
+        bits.push(`at ${d.glucose}, target ${d.target} ${d.units}`);
+      }
+      refParts.textContent = bits.join(" · ");
+      refWhy.textContent = why.length ? `* ${why.join("; ")}` : "";
+    }
+
+    function fetchRef() {
+      const carbs = plateCarbs();
+      const q = carbs.grams != null ? `?carbs=${encodeURIComponent(carbs.grams)}` : "";
+      fetch(`/api/bolus-reference${q}`)
+        .then((r) => r.json())
+        .then((d) => renderRef(d, carbs.complete))
+        .catch(() => {});
+    }
+
+    // Debounced: editing a count fires per keystroke, and a reference that
+    // flickers through three values on the way to one is harder to trust.
+    function refreshRef() {
+      if (refOff || !refEl) return;
+      clearTimeout(refTimer);
+      refTimer = setTimeout(fetchRef, 250);
+    }
+    updateMealRef = refreshRef;
 
     function addToPlate() {
       const name = foodEl.value.trim();

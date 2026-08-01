@@ -37,12 +37,12 @@ dia_minutes = 300   # Duration of Insulin Action (~4–6 h)
 peak_minutes = 75   # time to peak activity (~55 min Fiasp; ~65–75 min aspart/lispro)
 
 # --- EXPERIMENTAL bolus reference (off unless you set isf) ---------------------
-# Setting `isf` switches on a RETROSPECTIVE calculated dose in `report` and on the
-# desktop post-meal table, so you can see how a textbook formula compares to the
-# doses you actually decided on. It is a cross-check to argue with, NOT dosing
-# advice, and it never appears in the phone logging flow. See
-# docs/plans/insulin-awareness.md — a confident number on a shaky ISF is worse
-# than no number, so these stay unset until you have values you trust.
+# Setting `isf` switches on a calculated dose in three places: `report` and the
+# desktop post-meal table (retrospective — how a textbook formula compares to the
+# doses you actually decided on), and a live panel on the phone's meal form for
+# the plate you are entering. It is a cross-check to argue with, NOT dosing
+# advice. See docs/plans/insulin-awareness.md — a confident number on a shaky ISF
+# is worse than no number, so these stay unset until you have values you trust.
 #
 # These are YOURS/your clinician's — the app never infers or tunes them.
 # isf and target_bg are in the display unit above (mmol/L here); icr is grams.

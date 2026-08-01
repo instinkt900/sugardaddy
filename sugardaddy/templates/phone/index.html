@@ -100,6 +100,23 @@
 
       <input type="text" id="meal-note" placeholder="optional note" aria-label="Note">
 
+      {# Experimental live bolus reference for the plate as built so far. Hidden
+         until /api/bolus-reference says an ISF is configured; see bolus.py and
+         docs/plans/insulin-awareness.md for why it shows its components and is
+         worded as a cross-check rather than a dose. #}
+      <section id="meal-ref" class="meal-ref" hidden aria-live="polite">
+        <div class="mr-top">
+          <div class="mr-val">—</div>
+          <div class="mr-lab">reference for this plate</div>
+        </div>
+        <div id="mr-parts" class="mr-parts muted"></div>
+        <div id="mr-why" class="mr-why"></div>
+        <p class="mr-caveat muted">
+          Experimental — the formula's read on your configured ISF/ICR, to compare
+          against the dose you'd already give. Not advice; your own call wins.
+        </p>
+      </section>
+
       <button type="button" id="log-meal" class="big-btn">Log meal</button>
       <p id="meal-status" class="km-status muted"></p>
     </div>

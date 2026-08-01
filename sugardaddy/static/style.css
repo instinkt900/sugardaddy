@@ -204,6 +204,28 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 .additem-nums input { width: 100%; }
 .add-plate-btn { flex: 0 0 auto; min-height: 46px; padding: 0 18px; }
 
+/* Experimental bolus reference, sat directly above the log button. Deliberately
+   quieter than .big-btn: the amber rule and card read as "here is a figure to
+   weigh", not as the primary action. Never styled to look decided. */
+.meal-ref {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--high);
+}
+.meal-ref[hidden] { display: none; }
+.mr-top { display: flex; align-items: baseline; gap: 8px; }
+.mr-val { font-size: 20px; font-weight: 700; color: var(--text); line-height: 1.15; }
+.mr-lab { font-size: 12px; color: var(--muted); }
+/* An incomplete figure is still worth seeing, but it must not read as solid. */
+.mr-partial .mr-val { color: var(--muted); font-weight: 600; }
+.mr-parts { font-size: 12.5px; margin-top: 4px; line-height: 1.5; }
+.mr-parts:empty { display: none; }
+.mr-why { font-size: 12px; margin-top: 4px; color: var(--high); line-height: 1.45; }
+.mr-why:empty { display: none; }
+.mr-caveat { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; }
+
 .big-btn {
   margin-top: 4px;
   padding: 16px;

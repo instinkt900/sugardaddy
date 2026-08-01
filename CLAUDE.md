@@ -79,6 +79,9 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   plus `GET /api/daily?days=N` — the per-day intake rollup, on its OWN
   midnight-aligned window (deliberately not the chart's range, which can end
   mid-day and would show a part day beside whole ones)
+- `GET /api/bolus-reference?carbs=N` — the EXPERIMENTAL live reference for the
+  plate being built on the phone (`bolus.bolus_reference` against current glucose
+  + IOB). Returns `{"enabled": false}` and nothing else when no ISF is configured
 - Write APIs: `POST /api/{insulin,meal,foods,meal-templates}`;
   `PATCH`/`DELETE /api/{insulin,meal,foods,meal-templates}/{id}`
 - Push: `GET /api/push/key`, `POST /api/push/{subscribe,unsubscribe,test}`
