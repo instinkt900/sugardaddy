@@ -74,7 +74,7 @@ a { color: var(--accent); text-decoration: none; }
 
 .logform form { display: flex; flex-direction: column; gap: 12px; }
 label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
-input, select {
+input, select, textarea {
   padding: 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -82,7 +82,10 @@ input, select {
   color: var(--text);
   font-size: 16px;
 }
-input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+/* Textareas default to a monospace font and free horizontal resizing, neither of
+   which belongs in a phone column. */
+textarea { font-family: inherit; resize: vertical; width: 100%; }
 
 /* insulin-on-board + action-phase tiles under the glucose tile — informational */
 .io-tiles { display: flex; gap: 10px; }
@@ -249,6 +252,9 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 .entry-time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 104px; }
 .entry-main { font-weight: 600; }
 .entry-note { color: var(--muted); font-size: 13px; width: 100%; }
+/* A note is prose rather than a value: normal weight, and it wraps (keeping the
+   line breaks the user typed) instead of stretching the row. */
+.entry-text { flex: 1; min-width: 0; white-space: pre-line; }
 .tag {
   display: inline-block; background: var(--card-2); color: var(--muted);
   border-radius: 6px; padding: 1px 7px; font-size: 12px; margin-left: 4px;
@@ -296,7 +302,11 @@ input:focus, select:focus { outline: 2px solid var(--accent); border-color: var(
 .data-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
 .data-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .data-table tr:last-child td { border-bottom: none; }
-.data-table input, .data-table select { padding: 6px; font-size: 14px; }
+.data-table input, .data-table select, .data-table textarea { padding: 6px; font-size: 14px; }
+/* A note is prose in a table of values: let it wrap, keep the line breaks the
+   user typed, and give the editor the whole cell rather than an input's width. */
+.note-text { white-space: pre-line; }
+.data-table textarea { width: 100%; box-sizing: border-box; }
 /* Caps a growing table (the food library) at roughly 15 rows and scrolls the
    rest. The height is deliberately a hair short of a whole row so a sliced row
    peeks at the bottom — that's the only hint the list continues. border-collapse

@@ -36,6 +36,7 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
     readings = db.readings_between(start, now_utc)
     meals = db.meals_between(start, now_utc)
     doses = db.doses_between(start, now_utc)
+    notes = db.notes_between(start, now_utc)
     # IOB for a meal near the window start can draw on a dose up to a DIA earlier.
     pm_doses = db.doses_between(start - cfg.insulin.dia_minutes * 60, now_utc)
 
@@ -65,6 +66,10 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
         "summary": summary.as_dict(),
         "variability": analysis.variability(readings, units),
         "daily": analysis.daily_breakdown(readings, low, high, units, tzinfo),
+        # The only qualitative thing in the report: what the user said was going
+        # on. Keyed on the same local day as `daily`, so an odd day can be read
+        # against its own context rather than guessed at.
+        "notes": analysis.notes_by_day(notes, tzinfo),
         "hourly": analysis.hourly_profile(readings, low, high, units, tzinfo),
         "low_episodes": analysis.low_episodes(readings, low, units),
         "insulin": analysis.insulin_summary(doses),
@@ -106,6 +111,7 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
         ),
         "meal_count": len(meals),
         "dose_count": len(doses),
+        "note_count": len(notes),
     }
 
 
@@ -155,6 +161,10 @@ def _fmt_text(rep: dict, tzinfo) -> str:
     s = rep["summary"]
     if not s["reading_count"]:
         L.append("No glucose readings in this window.")
+        # Notes may be all there is here — and one of them may be the reason the
+        # readings are missing ("sensor came off Tuesday"), so they still print.
+        L.append("")
+        L.extend(_fmt_notes(rep.get("notes") or []))
         return "\n".join(L)
 
     v = rep["variability"]
@@ -165,6 +175,8 @@ def _fmt_text(rep: dict, tzinfo) -> str:
     L.append(f"  variability   SD {v['sd']} {u}   CV {v['cv_percent']}%  (<=36% = stable)")
     L.append(f"  lows/highs    {s['low_count']} low readings, {s['high_count']} high readings")
     L.append("")
+
+    L.extend(_fmt_notes(rep.get("notes") or []))
 
     L.append("PER DAY")
     L.append(f"  {'day':<11}{'n':>5}{'avg':>7}{'min':>6}{'max':>7}{'TIR%':>7}{'low%':>7}{'high%':>7}")
@@ -227,6 +239,36 @@ def _fmt_text(rep: dict, tzinfo) -> str:
         L.append("")
         L.extend(_fmt_backtest(bt, tzinfo))
     return "\n".join(L)
+
+
+# "  " + day (10) + "  " + HH:MM (5) + "  " — what a wrapped note has to clear.
+_NOTE_INDENT = " " * 21
+
+
+def _fmt_notes(days: list[dict]) -> list[str]:
+    """The window's context notes, ahead of every numeric breakdown.
+
+    Placed here on purpose: a fortnight with a week of illness in it is a
+    different fortnight, and the reader should know that before reading the
+    per-day table rather than after. Printed verbatim — this is the one section
+    the app has no opinion about.
+    """
+    total = sum(len(d["notes"]) for d in days)
+    L = [f"CONTEXT NOTES ({total})"]
+    if not total:
+        L.append("  none logged")
+        L.append("")
+        return L
+    for d in days:
+        for i, n in enumerate(d["notes"]):
+            # The day is printed once and blanked on its later notes, so a day's
+            # worth of context reads as one block instead of a repeated column.
+            day = d["day"] if i == 0 else " " * len(d["day"])
+            lines = n["text"].splitlines() or [""]
+            L.append(f"  {day}  {n['time']}  {lines[0]}")
+            L.extend(f"{_NOTE_INDENT}{extra}" for extra in lines[1:])
+    L.append("")
+    return L
 
 
 def _fmt_basal(rx: dict, ad: dict) -> list[str]:

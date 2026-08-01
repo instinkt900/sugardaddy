@@ -6,17 +6,18 @@
   SD.timeFields();
 
   // --- tabs ---
+  // Each button owns the panel at #tab-<data-tab>, so adding a tab is markup only.
   const tabs = document.querySelectorAll(".tab");
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
-      tabs.forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
-      const which = tab.dataset.tab;
-      document.getElementById("tab-insulin").classList.toggle("hidden", which !== "insulin");
-      document.getElementById("tab-meal").classList.toggle("hidden", which !== "meal");
+      tabs.forEach((t) => {
+        t.classList.toggle("active", t === tab);
+        const panel = document.getElementById("tab-" + t.dataset.tab);
+        if (panel) panel.classList.toggle("hidden", t !== tab);
+      });
       // The reference goes stale while the tab is closed (it's only refreshed
       // when visible), so bring it up to date on the way in.
-      if (which === "meal") updateMealRef();
+      if (tab.dataset.tab === "meal") updateMealRef();
     });
   });
 
@@ -62,13 +63,14 @@
     }, 1600);
   }
 
-  // Insulin uses an HTMX form; confirm on a successful post.
-  const insulinForm = document.querySelector("#tab-insulin form");
-  if (insulinForm) {
-    insulinForm.addEventListener("htmx:afterRequest", (e) => {
-      if (e.detail && e.detail.successful) toast("Dose logged");
+  // Insulin and notes both post via HTMX; confirm on a successful post.
+  [["#tab-insulin form", "Dose logged"], ["#tab-note form", "Note logged"]].forEach(([sel, msg]) => {
+    const form = document.querySelector(sel);
+    if (!form) return;
+    form.addEventListener("htmx:afterRequest", (e) => {
+      if (e.detail && e.detail.successful) toast(msg);
     });
-  }
+  });
 
   // ================= live refresh (current reading + mini chart) =============
   const REFRESH_MS = 60000;

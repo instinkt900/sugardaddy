@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sugardaddy import analysis, iob  # noqa: E402
 from sugardaddy.constants import mgdl_to_mmol, mmol_to_mgdl  # noqa: E402
-from sugardaddy.models import GlucoseReading, InsulinDose, Meal, MealItem  # noqa: E402
+from sugardaddy.models import GlucoseReading, InsulinDose, Meal, MealItem, Note  # noqa: E402
 
 UNITS = "mmol/L"
 LOW = mmol_to_mgdl(3.9)
@@ -400,6 +400,49 @@ def test_post_meal_insulin_context():
     assert row["bolus_units"] == 6.0, row
     prior_iob = 4.0 * iob.iob_fraction(60, iob.DEFAULT_DIA_MINUTES, iob.DEFAULT_PEAK_MINUTES)
     assert row["iob_start_units"] == round(prior_iob, 1), (row, prior_iob)
+
+
+def test_notes_group_by_local_day_in_order():
+    notes = [
+        Note(ts_utc=T0 + 14 * 3600, text="second"),   # 14:00 UTC
+        Note(ts_utc=T0 + 3600, text="first"),         # 01:00 UTC
+        Note(ts_utc=T0 + 30 * 3600, text="next day"),
+    ]
+    out = analysis.notes_by_day(notes, timezone.utc)
+    assert [d["day"] for d in out] == ["2026-07-23", "2026-07-24"], out
+    # Notes arrive in whatever order the caller had them; within a day they must
+    # come out chronological, or the narrative reads backwards.
+    assert [n["text"] for n in out[0]["notes"]] == ["first", "second"], out[0]
+    assert [n["time"] for n in out[0]["notes"]] == ["01:00", "14:00"], out[0]
+
+
+def test_notes_split_on_the_local_day_not_utc():
+    from datetime import timedelta
+
+    plus10 = timezone(timedelta(hours=10))
+    # 14:00 UTC is already 00:00 the next day in +10. The day key has to follow
+    # the display timezone so a note lines up with the `daily` row it explains.
+    notes = [Note(ts_utc=T0 + 3600, text="lunch"), Note(ts_utc=T0 + 14 * 3600, text="late")]
+    assert [d["day"] for d in analysis.notes_by_day(notes, plus10)] == [
+        "2026-07-23", "2026-07-24",
+    ]
+    assert [d["day"] for d in analysis.notes_by_day(notes, timezone.utc)] == ["2026-07-23"]
+
+
+def test_notes_by_day_is_empty_without_notes():
+    # An unnoted window is the normal case, not a gap needing a placeholder row.
+    assert analysis.notes_by_day([], timezone.utc) == []
+
+
+def test_notes_share_the_day_key_with_the_glucose_breakdown():
+    # The whole value of the section is lining a note up against its day, so the
+    # two keys have to be the same string — pinned here like the daily rollups.
+    from zoneinfo import ZoneInfo
+
+    syd = ZoneInfo("Australia/Sydney")
+    ts = T0 + 20 * 3600  # 20:00 UTC = 06:00 next day in Sydney
+    day = analysis.daily_breakdown([r(20 * 3600, 8.0)], LOW, HIGH, UNITS, syd)[0]["day"]
+    assert analysis.notes_by_day([Note(ts_utc=ts, text="woke up rough")], syd)[0]["day"] == day
 
 
 def _run_all():

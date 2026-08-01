@@ -44,6 +44,7 @@ from sugardaddy.models import (
     MealItem,
     MealTemplate,
     MealTemplateItem,
+    Note,
 )
 
 log = logging.getLogger("sugardaddy.web")
@@ -218,6 +219,16 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "note": d.note,
         }
 
+    def note_json(n: Note) -> dict:
+        return {
+            "id": n.id,
+            "t": n.ts_utc * 1000,
+            "ts_utc": n.ts_utc,
+            "local": local_str(n.ts_utc),
+            "input": local_input(n.ts_utc),
+            "text": n.text,
+        }
+
     def meal_item_json(i: MealItem) -> dict:
         return {
             "id": i.id,
@@ -276,7 +287,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         start, end = now_epoch() - _DAY, now_epoch()
         doses = [dose_json(d) for d in reversed(db.doses_between(start, end))]
         meals = [meal_json(m) for m in reversed(db.meals_between(start, end))]
-        return {"doses": doses, "meals": meals, "units": cfg.web.units}
+        notes = [note_json(n) for n in reversed(db.notes_between(start, end))]
+        return {"doses": doses, "meals": meals, "notes": notes, "units": cfg.web.units}
 
     def current_context() -> dict:
         now = now_epoch()
@@ -506,6 +518,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             ],
             "doses": [dose_json(d) for d in db.doses_between(start, end)],
             "meals": [meal_json(m) for m in db.meals_between(start, end)],
+            "notes": [note_json(n) for n in db.notes_between(start, end)],
             "iob": iob,
             "activity": activity,
         }
@@ -516,6 +529,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         return {
             "doses": [dose_json(d) for d in reversed(db.doses_between(start, end))],
             "meals": [meal_json(m) for m in reversed(db.meals_between(start, end))],
+            "notes": [note_json(n) for n in reversed(db.notes_between(start, end))],
         }
 
     @app.get("/api/stats")
@@ -652,6 +666,26 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             db.upsert_meal_template(name, _parse_template_items(body.get("items")))
         return meal_json(db.get_meal(meal.id))
 
+    @app.post("/api/note")
+    def create_note(
+        request: Request,
+        text: str = Form(...),
+        ts: str = Form(""),
+    ):
+        """Log a free-text context event. Posted as a form from the phone's Note
+        tab, so it answers with the recent partial there and JSON elsewhere —
+        the same shape as the insulin post."""
+        text = text.strip()
+        if not text:
+            # A blank note records nothing but the time, which is worse than no
+            # row at all. HTMX leaves the list alone on a 4xx.
+            return JSONResponse({"error": "text required"}, status_code=400)
+        note = Note(ts_utc=parse_local(ts), text=text)
+        note.id = db.add_note(note)
+        if _wants_partial(request):
+            return _recent_partial(request)
+        return note_json(note)
+
     @app.get("/api/recent", response_class=HTMLResponse)
     def api_recent(request: Request):
         """The recent-entries partial, so the phone can refresh it after a
@@ -701,6 +735,27 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     @app.delete("/api/meal/{meal_id}")
     def delete_meal(meal_id: int):
         ok = db.delete_meal(meal_id)
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    @app.patch("/api/note/{note_id}")
+    async def update_note(note_id: int, request: Request):
+        body = await request.json()
+        fields = {}
+        if "ts" in body:
+            fields["ts_utc"] = parse_local(body["ts"])
+        if "text" in body:
+            # Same guard as the create: emptying a note leaves a row that records
+            # a time and nothing else. Deleting it is the way to get rid of it.
+            text = (body["text"] or "").strip()
+            if not text:
+                return JSONResponse({"error": "text required"}, status_code=400)
+            fields["text"] = text
+        ok = db.update_note(note_id, **fields)
+        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+
+    @app.delete("/api/note/{note_id}")
+    def delete_note(note_id: int):
+        ok = db.delete_note(note_id)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
     # --- foods (library) ------------------------------------------------

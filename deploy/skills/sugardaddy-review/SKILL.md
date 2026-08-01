@@ -174,10 +174,11 @@ semicolons, no contractions. Two deliberate departures from that skill:
    Order by likely impact. **No dose, ratio, rate or timing number appears here**
    — the guardrail at the top of this file applies with full force.
 5. **Data quality and limits** — split into strengths and limits. Always name:
-   that carb figures are estimates, the window length and any part days, and that
-   exercise, illness, stress, alcohol and sleep are not captured at all. Name the
-   insulin products from `prescription` — and if that section is absent, list the
-   missing products as a limit instead.
+   that carb figures are estimates, the window length and any part days, and how
+   exercise, illness, stress, alcohol and sleep are covered — see the notes rule
+   below, and do not keep saying they are not captured at all. Name the insulin
+   products from `prescription` — and if that section is absent, list the missing
+   products as a limit instead.
 
 ### Prescription and basal adherence
 
@@ -215,6 +216,15 @@ recorded fact, not calculation — treat them accordingly.
   <date>"), never as ambiguity ("it cannot be determined whether..."). Say this
   convention explicitly in section 1 so the clinician knows absence is evidence.
   Keep it separate from timestamp precision, which *is* a real limit.
+- **Context notes belong in the report, as the patient's own account.** Where a
+  note bears on a figure the clinician is reading, put it beside that figure
+  ("the patient recorded a fever on 30 and 31 July" next to those days). Summarise
+  rather than transcribe, and leave out anything that does not bear on the data —
+  this is free text the user wrote for themselves, not a statement prepared for a
+  clinician. In the limits section, say plainly how much is there: notes cover
+  exercise, illness and stress **only on the days one was written**, so an
+  unnoted day is unknown, not uneventful. With no notes at all in the window,
+  keep naming those factors as uncaptured.
 - Distinguish hypo treatment from uncovered intake when classifying meals with no
   bolus. Check the starting glucose and the distance to the nearest low episode.
   Do not assume — the two look identical in the totals and mean opposite things.
@@ -241,6 +251,31 @@ Read the JSON, don't re-derive the maths. Focus the write-up on management:
   logging is the concrete lever that unlocks deeper future reviews.
   `carb_coverage.partial` counts plates where only *some* items were carbed: the
   total understates the meal, so treat those meals' carb figures as soft.
+
+### Context notes (`notes`)
+
+Free text the user logged against a time — illness, exercise, travel, a bad
+night. Grouped by local day on the **same day key as `daily`**, so read them side
+by side: a day sitting well outside the week's pattern with "vomiting bug, ate
+nothing" against it is explained, and reporting it as a control failure would be
+wrong. Read the notes **before** the per-day and hourly tables, and let them
+inform what you call a pattern.
+
+They are the only qualitative input in the report, so they need their own care:
+
+- **Absent notes mean nothing.** The "an absent entry means a missed event"
+  convention is about insulin and meals, where the user maintains the log as
+  authoritative. It does **not** extend here. A week with no notes is a week
+  nobody wrote anything down in — never conclude from an empty `notes` that the
+  patient was well, unstressed, or inactive.
+- A note is **the user's own account**, not a measurement. Attribute it ("the
+  patient recorded a fever on 30 July"), and never upgrade it to a clinical
+  finding or a diagnosis.
+- Use a note to **temper** a reading of the data, not to manufacture causation.
+  "The two highest days both carry illness notes" is fair. "Illness caused the
+  rise" is not — one note beside one bad day is a coincidence you cannot rule on.
+- Do not treat notes as a data source to total or trend. There is no arithmetic
+  here and none should be invented.
 
 ### The bolus reference (`bolus_backtest`, and `ref` on `post_meal` rows)
 

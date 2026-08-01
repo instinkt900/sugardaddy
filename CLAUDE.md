@@ -8,7 +8,8 @@ Context for working on this repo. Product **display name** is "Sugar Daddy"; the
 A small, self-contained app for someone using a **FreeStyle Libre** CGM. It:
 - ingests glucose readings over time **directly from LibreLinkUp** (no Home
   Assistant needed at runtime — the AU region is the live setup),
-- lets the user log **insulin doses** and **meals** from a phone web UI,
+- lets the user log **insulin doses**, **meals** and free-text **notes**
+  (sickness, exercise — context for the readings) from a phone web UI,
 - sends **one** push notification: no **basal** dose logged for >24 h (+ leniency),
 - provides a **desktop dashboard** to review glucose/insulin/meals on one
   timeline, and
@@ -38,7 +39,7 @@ sugardaddy/            Python package
   __main__.py          `python -m sugardaddy`
   web.py               FastAPI app factory, all routes, request parsing, tz helpers
   db.py                SQLite schema + Database wrapper (short-lived connections)
-  models.py            dataclasses: GlucoseReading, InsulinDose, Food, Meal(+Item), MealTemplate(+Item)
+  models.py            dataclasses: GlucoseReading, InsulinDose, Note, Food, Meal(+Item), MealTemplate(+Item)
   config.py            TOML loader; dataclasses; _known() rejects unknown keys; secrets from env only
   constants.py         units + GMI helpers; mg/dL <-> mmol/L; default target band (3.9–10.0 mmol/L)
   ingest.py            background poller (authenticate, backfill recent window once, then poll)
@@ -49,7 +50,7 @@ sugardaddy/            Python package
                        variability, daily_breakdown, hourly_profile, low_episodes,
                        insulin_summary, daily_intake, day_coverage,
                        day_window_start, smooth_glucose, basal_status,
-                       carb_coverage) — no I/O, no clock, no config
+                       carb_coverage, notes_by_day) — no I/O, no clock, no config
   report.py            `report` command: window + tz resolution, calls analysis, text/JSON
   templates/           base.html, phone/index.html, desktop/dashboard.html, partials/recent.html
   static/              style.css, phone.js, desktop.js, common.js, sw.js, vendored libs, icons/
@@ -82,8 +83,15 @@ config.example.toml    the only tracked config; real config.toml is gitignored
 - `GET /api/bolus-reference?carbs=N` — the EXPERIMENTAL live reference for the
   plate being built on the phone (`bolus.bolus_reference` against current glucose
   + IOB). Returns `{"enabled": false}` and nothing else when no ISF is configured
-- Write APIs: `POST /api/{insulin,meal,foods,meal-templates}`;
-  `PATCH`/`DELETE /api/{insulin,meal,foods,meal-templates}/{id}`
+- Write APIs: `POST /api/{insulin,meal,note,foods,meal-templates}`;
+  `PATCH`/`DELETE /api/{insulin,meal,note,foods,meal-templates}/{id}`.
+  `/api/insulin` and `/api/note` are form posts (the phone's HTMX tabs) and
+  answer with the recent partial when `HX-Request` is set; the rest are JSON
+- **Notes** are free-text context events (`{ts, text}` — sickness, exercise, a
+  bad night): stamp plus words, no categories. They ride along in
+  `/api/{timeline,entries,recent}`, show in the phone's recent list, and on the
+  desktop as a rose circle marker plus their own editable table, and in
+  `report` / the review skill (see below)
 - Push: `GET /api/push/key`, `POST /api/push/{subscribe,unsubscribe,test}`
   (`/api/push/test` is the fastest way to prove a device's push chain works)
 - The service worker (`sw.js`) is **network-first**, so code/template/static
@@ -124,6 +132,13 @@ sugardaddy vapid-keys                           # mint the Web Push signing key
 per-hour breakdowns, grouped low episodes, insulin summary, carb coverage,
 post-meal responses). `--db` overrides the config's DB path so a copied DB can be
 analysed off-box; units/targets/tz still come from the config.
+
+The one exception to "deterministic analysis only" is `notes` — the user's own
+free text, grouped by local day (same day key as `daily`) and printed verbatim
+ahead of every numeric section. It has no arithmetic and takes none. Note that
+the **"absent data means missed" convention does NOT extend to notes**: no note
+on a day means nobody wrote one, not that nothing happened — the review skill
+spells this out because the opposite reading fabricates a clinical claim.
 
 ## Configuration
 

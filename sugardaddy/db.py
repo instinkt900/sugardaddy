@@ -20,6 +20,7 @@ from sugardaddy.models import (
     MealItem,
     MealTemplate,
     MealTemplateItem,
+    Note,
     PushSubscription,
 )
 
@@ -98,6 +99,16 @@ CREATE TABLE IF NOT EXISTS meal_template_items (
     count       REAL    NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_mti_template ON meal_template_items(template_id);
+
+-- Free-text context events (sickness, exercise, travel...). No shape beyond a
+-- stamp and some words: anything that made the surrounding readings what they
+-- are but isn't a dose or a plate.
+CREATE TABLE IF NOT EXISTS notes (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_utc INTEGER NOT NULL,
+    text   TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_notes_ts ON notes(ts_utc);
 
 -- Devices subscribed to push notifications. The browser hands back the same
 -- endpoint on every page load, so it is UNIQUE and writes upsert on it.
@@ -324,6 +335,38 @@ class Database:
                 (kind,),
             ).fetchone()
         return _dose(row) if row else None
+
+    # --- notes (free-text context events) --------------------------------
+
+    def add_note(self, n: Note) -> int:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO notes (ts_utc, text) VALUES (?, ?)", (n.ts_utc, n.text)
+            )
+            return cur.lastrowid
+
+    def update_note(self, note_id: int, **fields) -> bool:
+        return self._update("notes", note_id, fields, {"ts_utc", "text"})
+
+    def delete_note(self, note_id: int) -> bool:
+        return self._delete("notes", note_id)
+
+    def notes_between(self, start: int, end: int) -> list[Note]:
+        with self.connect() as conn:
+            # `report --db` exists to analyse a *copy* of the DB off-box, and a
+            # copy can predate this table — it shipped long after glucose,
+            # insulin and meals, so it is the one read here that can hit a schema
+            # older than itself. A database with nowhere to put notes has none;
+            # that is an answer, not an error, and it must not take the whole
+            # report down. init_db() is never called on a --db copy (report stays
+            # read-only), so there is nothing else to catch this.
+            if not self._table_exists(conn, "notes"):
+                return []
+            rows = conn.execute(
+                "SELECT * FROM notes WHERE ts_utc BETWEEN ? AND ? ORDER BY ts_utc",
+                (start, end),
+            ).fetchall()
+        return [_note(r) for r in rows]
 
     # --- foods (library) -------------------------------------------------
 
@@ -664,6 +707,10 @@ def _dose(row: sqlite3.Row) -> InsulinDose:
         kind=row["kind"],
         note=row["note"],
     )
+
+
+def _note(row: sqlite3.Row) -> Note:
+    return Note(id=row["id"], ts_utc=row["ts_utc"], text=row["text"])
 
 
 def _subscription(row: sqlite3.Row) -> PushSubscription:

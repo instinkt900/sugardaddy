@@ -28,6 +28,22 @@ class InsulinDose:
 
 
 @dataclass
+class Note:
+    """A free-text event on the timeline: sickness, exercise, travel, a bad
+    night — context that changes how the numbers around it should be read but
+    doesn't fit the insulin or meal shapes.
+
+    Deliberately unstructured. The point is to catch what would otherwise go
+    unlogged, so anything that asks the user to classify the event first would
+    defeat it; the text is for a human (or a retrospective review) to read.
+    """
+
+    ts_utc: int
+    text: str = ""
+    id: int | None = None
+
+
+@dataclass
 class PushSubscription:
     """A browser's Web Push subscription, as handed over by ``pushManager.subscribe()``.
 

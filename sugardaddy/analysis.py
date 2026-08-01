@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone, tzinfo
 from sugardaddy.bolus import bolus_reference, describe
 from sugardaddy.constants import mgdl_to_mmol, to_display
 from sugardaddy.iob import DEFAULT_DIA_MINUTES, DEFAULT_PEAK_MINUTES, active_iob, is_rapid
-from sugardaddy.models import GlucoseReading, InsulinDose, Meal
+from sugardaddy.models import GlucoseReading, InsulinDose, Meal, Note
 
 # A meal's "starting" glucose is the nearest reading within this window (seconds).
 # The same window defines a dose "co-timed" with the meal (its meal bolus).
@@ -617,6 +617,31 @@ def daily_intake(meals: list[Meal], doses: list[InsulinDose], tz: tzinfo) -> lis
         row["insulin_units"] = round(row["insulin_units"], 1)
         out.append(row)
     return out
+
+
+def notes_by_day(notes: list[Note], tz: tzinfo) -> list[dict]:
+    """Free-text context events grouped by local calendar day, oldest first.
+
+    There is no maths to do here — a note carries no number. The grouping is the
+    whole point: the day key is the same ``%Y-%m-%d`` string ``daily_breakdown``
+    and ``daily_intake`` use, so a row that sits 3 mmol/L above the rest of the
+    week can be read next to "vomiting bug, ate nothing" instead of being
+    explained by guesswork. Making that connection is the reader's job; this only
+    puts the two within reach of each other.
+
+    A day appears only if something was noted on it — an empty day is the normal
+    case, not a gap worth a row.
+    """
+    days: dict[str, list[dict]] = {}
+    for n in notes:
+        local = datetime.fromtimestamp(n.ts_utc, tz)
+        days.setdefault(local.strftime("%Y-%m-%d"), []).append(
+            {"ts_utc": n.ts_utc, "time": local.strftime("%H:%M"), "text": n.text}
+        )
+    return [
+        {"day": day, "notes": sorted(days[day], key=lambda n: n["ts_utc"])}
+        for day in sorted(days)
+    ]
 
 
 def basal_status(

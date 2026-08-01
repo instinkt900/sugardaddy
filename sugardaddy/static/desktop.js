@@ -197,8 +197,15 @@
   // in-place updates below instead of being frozen at build time.
   let chartPayload = null;
 
-  // Dose/meal markers sit just above the bottom of the glucose range, so their
-  // y positions move with the data and have to be recomputed each refresh.
+  // Collapse a note to one tooltip-sized line. Chart.js draws a tooltip label as
+  // a single unwrapped run, so a multi-line note would spill off the chart.
+  function oneLine(s, max) {
+    const t = (s || "").replace(/\s+/g, " ").trim();
+    return t.length > max ? t.slice(0, max - 1) + "…" : t;
+  }
+
+  // Dose/meal/note markers sit just above the bottom of the glucose range, so
+  // their y positions move with the data and have to be recomputed each refresh.
   function chartSeries(data) {
     const glucose = data.glucose.map((p) => ({ x: p.t, y: p.v }));
     const ys = glucose.map((p) => p.y);
@@ -206,6 +213,7 @@
     const yMax = ys.length ? Math.max(...ys) : 10;
     const doseY = yMin;
     const mealY = yMin + (yMax - yMin) * 0.06;
+    const noteY = yMin + (yMax - yMin) * 0.12;
     return {
       glucose,
       smoothed: (data.smoothed || []).map((p) => ({ x: p.t, y: p.v })),
@@ -216,6 +224,9 @@
         x: m.t, y: mealY,
         label: m.label + (m.total_carbs != null ? ` (${m.total_carbs}g)` : ""),
       })),
+      // A note has no value of its own — it is an annotation on whatever the
+      // glucose was doing around it, so it only ever gets a marker and a stamp.
+      notes: (data.notes || []).map((n) => ({ x: n.t, y: noteY, label: oneLine(n.text, 70) })),
     };
   }
 
@@ -231,7 +242,8 @@
     // at each auto-refresh — which made a chart impossible to read for long.
     if (chart) {
       const sets = chart.data.datasets;
-      [s.glucose, s.smoothed, s.doses, s.meals, s.iob, s.activity].forEach((d, i) => { sets[i].data = d; });
+      [s.glucose, s.smoothed, s.doses, s.meals, s.notes, s.iob, s.activity]
+        .forEach((d, i) => { sets[i].data = d; });
       chart.options.scales.x.min = data.from;
       chart.options.scales.x.max = data.to;
       chart.update();
@@ -268,6 +280,13 @@
             pointStyle: "triangle", radius: 7, parsing: false, order: 1 },
           { type: "scatter", label: "Meal", data: s.meals, borderColor: "#ffb020",
             backgroundColor: "#ffb020", pointStyle: "rectRot", radius: 7,
+            parsing: false, order: 1 },
+          // Rose, and the only round marker: a note is a different *kind* of
+          // thing from a dose or a meal — not a quantity that happened at a time,
+          // but a reason the numbers around it may not compare to other days.
+          // Distinct enough from the orange meals to pick out at a glance.
+          { type: "scatter", label: "Note", data: s.notes, borderColor: "#f472b6",
+            backgroundColor: "#f472b6", pointStyle: "circle", radius: 6,
             parsing: false, order: 1 },
           // Active-insulin (IOB) curve on its own right-hand axis, translucent so
           // it never hides anything. order:2 puts it at the back of the stack:
@@ -516,14 +535,20 @@
       `<th class="muted">${mean("dose_count").toFixed(1)}</th>`;
   }
 
-  // ---- tables: insulin + meals ----
+  // ---- tables: insulin + meals + notes ----
   function renderTables(entries) {
     const iTable = document.querySelector("#insulin-table tbody");
     const mTable = document.querySelector("#meal-table tbody");
+    const nTable = document.querySelector("#note-table tbody");
     iTable.innerHTML = "";
     mTable.innerHTML = "";
+    nTable.innerHTML = "";
     entries.doses.forEach((d) => iTable.appendChild(doseRow(d)));
     entries.meals.forEach((m) => mTable.appendChild(mealRow(m)));
+    (entries.notes || []).forEach((n) => nTable.appendChild(noteRow(n)));
+    if (!(entries.notes || []).length) {
+      nTable.innerHTML = `<tr><td colspan="3" class="muted">Nothing noted in this range.</td></tr>`;
+    }
   }
 
   function doseRow(d) {
@@ -566,6 +591,38 @@
       const body = readDose(tr);
       patch("insulin", d.id, { ...body, units: parseFloat(body.units) });
     };
+    tr.querySelector('[data-act="cancel"]').onclick = load;
+  }
+
+  // ---- notes (free-text context events) ----
+  // No structure to edit beyond a stamp and the words, so the row is its own
+  // editor rather than borrowing the meal editor's panel.
+  function noteRow(n) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${n.local}</td><td class="note-text">${esc(n.text)}</td>
+      <td class="row-actions"><button class="icon-btn" data-act="edit">Edit</button>
+      <button class="icon-btn danger" data-act="del">✕</button></td>`;
+    tr.querySelector('[data-act="del"]').onclick = () => del("note", n.id);
+    tr.querySelector('[data-act="edit"]').onclick = () => editNote(tr, n);
+    return tr;
+  }
+
+  function noteEditCells(n) {
+    n = n || {};
+    return `
+      <td><input type="datetime-local" class="n-ts" value="${n.input || nowInput(0)}"></td>
+      <td><textarea class="n-text" rows="2" placeholder="what happened">${esc(n.text || "")}</textarea></td>
+      <td class="row-actions"><button class="icon-btn save">Save</button>
+      <button class="icon-btn" data-act="cancel">Cancel</button></td>`;
+  }
+  function readNote(tr) {
+    return { ts: tr.querySelector(".n-ts").value, text: tr.querySelector(".n-text").value };
+  }
+
+  function editNote(tr, n) {
+    tr.innerHTML = noteEditCells(n);
+    SD.timeFields(tr);
+    tr.querySelector(".save").onclick = () => patch("note", n.id, readNote(tr));
     tr.querySelector('[data-act="cancel"]').onclick = load;
   }
 
@@ -839,6 +896,18 @@
       tbody.closest(".table-scroll").scrollTop = 0;
       return;
     }
+    if (type === "note") {
+      const tbody = document.querySelector("#note-table tbody");
+      const tr = document.createElement("tr");
+      tr.innerHTML = noteEditCells(null);
+      SD.timeFields(tr);
+      tr.querySelector(".save").onclick = () => create("note", readNote(tr));
+      tr.querySelector('[data-act="cancel"]').onclick = load;
+      // The empty-state row would otherwise sit under the new editor.
+      if (!tbody.querySelector(".row-actions")) tbody.innerHTML = "";
+      tbody.prepend(tr);
+      return;
+    }
     if (type === "insulin") {
       const tbody = document.querySelector("#insulin-table tbody");
       const tr = document.createElement("tr");
@@ -854,7 +923,17 @@
   function create(type, fields) {
     const fd = new FormData();
     Object.entries(fields).forEach(([k, v]) => fd.append(k, v ?? ""));
-    fetch(`/api/${type}`, { method: "POST", body: fd }).then(load);
+    fetch(`/api/${type}`, { method: "POST", body: fd }).then(async (r) => {
+      // A rejected create used to reload regardless, so the row simply vanished
+      // and took the typed values with it. Say what was wrong and leave the
+      // editor standing, the way patch() already does.
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        alert(e.error || "Save failed.");
+        return;
+      }
+      load();
+    });
   }
   function createJSON(type, body) {
     fetch(`/api/${type}`, {
@@ -886,6 +965,7 @@
   function isEditing() {
     return !!document.querySelector(
       "#insulin-table input, #insulin-table select, #meal-table input, #meal-table select, " +
+      "#note-table input, #note-table textarea, " +
       "#foods-table input, #templates-list input, #templates-list select"
     );
   }

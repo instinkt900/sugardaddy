@@ -35,6 +35,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="insulin">Insulin</button>
     <button class="tab" data-tab="meal">Meal</button>
+    <button class="tab" data-tab="note">Note</button>
   </nav>
 
   <section id="tab-insulin" class="logform">
@@ -120,6 +121,20 @@
       <button type="button" id="log-meal" class="big-btn">Log meal</button>
       <p id="meal-status" class="km-status muted"></p>
     </div>
+  </section>
+
+  {# Anything that colours the readings but isn't a dose or a plate — sickness,
+     exercise, a bad night. Just words and a time, on purpose: asking the user to
+     categorise the event first is how it ends up not logged at all. #}
+  <section id="tab-note" class="logform hidden">
+    <form hx-post="/api/note" hx-target="#recent" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) this.reset()">
+      <textarea name="text" rows="3" required placeholder="what happened — sickness, exercise, travel…" aria-label="Note"></textarea>
+      <div class="ts-row">
+        <input type="datetime-local" id="note-ts" name="ts" value="{{ now_input }}" aria-label="Time">
+        <button type="button" class="combo-btn now-btn" data-now="note-ts">Now</button>
+      </div>
+      <button type="submit" class="big-btn">Log note</button>
+    </form>
   </section>
 
   {% include "partials/recent.html" %}
