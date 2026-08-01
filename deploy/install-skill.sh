@@ -13,6 +13,8 @@ DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/sugardaddy-review"
 
 mkdir -p "$DEST/history"
 cp "$SRC/SKILL.md" "$DEST/SKILL.md"
+cp "$SRC/render_report.py" "$DEST/render_report.py"
+chmod +x "$DEST/render_report.py"
 cp "$SRC/connection.env.example" "$DEST/connection.env.example"
 
 if [[ -f "$DEST/connection.env" ]]; then

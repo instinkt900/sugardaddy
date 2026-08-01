@@ -50,6 +50,34 @@ peak_minutes = 75   # time to peak activity (~55 min Fiasp; ~65–75 min aspart/
 # icr = 10          # grams of carb covered by 1 u
 # target_bg = 6.0   # what a correction aims at; default is the target band midpoint
 
+[prescription]
+# What your clinician actually prescribed. Recorded fact, NOT a parameter —
+# nothing here is ever fed into a calculation. The app only reports it back, so
+# that `report` can say "prescribed 36 u, logged on 6 of 7 days" without
+# expressing any opinion about the dose itself.
+#
+# This is the one target in the app that the app did not invent: its provenance
+# is a person. That is why it needs no hedging, and also why it must never reach
+# the phone's logging flow — a prescription shown at dose time stops being a
+# record and becomes an instruction. See docs/plans/insulin-awareness.md.
+#
+# Leave the whole section empty if you have not asked. Empty means "not
+# recorded", never "prescribed nothing".
+#
+# `reviewed` is REQUIRED once you set anything else: a stale prescription
+# reported as current is worse than none, so the date travels with the values.
+reviewed = ""        # ISO date the prescription was last set, e.g. "2026-03-14"
+basal_product = ""   # e.g. "Toujeo" — a label for the report, never matched on
+# basal_units = 36   # the prescribed nightly dose
+basal_timing = ""    # free text, e.g. "evening"
+rapid_product = ""   # e.g. "NovoRapid"
+# If your clinician gave you a ratio, record it HERE as well as in [insulin].
+# [insulin] holds what the experimental reference actually runs on (possibly your
+# own placeholder); this holds what a professional chose. `report` states whether
+# the two agree, which is what decides if the backtest is worth quoting.
+# icr = 10
+# isf = 2.5
+
 [notify]
 # Push notifications. There is exactly one: a reminder that no BASAL dose has
 # been logged for a while. It is a reminder about the LOG, not dosing advice —

@@ -68,6 +68,16 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
         "hourly": analysis.hourly_profile(readings, low, high, units, tzinfo),
         "low_episodes": analysis.low_episodes(readings, low, units),
         "insulin": analysis.insulin_summary(doses),
+        # What the clinician prescribed, echoed back with its date so a stale
+        # entry is visible. Reported, never fed into any calculation.
+        "prescription": _prescription(cfg),
+        "basal_adherence": analysis.basal_adherence(
+            doses,
+            start,
+            now_utc,
+            tzinfo,
+            prescribed_units=cfg.prescription.basal_units,
+        ),
         "carb_coverage": analysis.carb_coverage(meals),
         "post_meal": analysis.post_meal_responses(
             readings,
@@ -96,6 +106,35 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
         ),
         "meal_count": len(meals),
         "dose_count": len(doses),
+    }
+
+
+def _prescription(cfg) -> dict:
+    """The [prescription] section as reported. ``configured: false`` and nothing
+    else when empty, so a consumer cannot mistake blank fields for a prescription
+    of nothing."""
+    rx = cfg.prescription
+    if not rx.configured:
+        return {"configured": False}
+    return {
+        "configured": True,
+        "reviewed": rx.reviewed,
+        "basal_product": rx.basal_product,
+        "basal_units": rx.basal_units,
+        "basal_timing": rx.basal_timing,
+        "rapid_product": rx.rapid_product,
+        "icr": rx.icr,
+        "isf": rx.isf,
+        # Whether the experimental reference is running on the clinician's own
+        # numbers or the user's placeholders. That is the difference between a
+        # backtest worth quoting and one that needs hedging, so it is stated
+        # rather than left to be inferred from two sections matching.
+        "matches_insulin_section": (
+            rx.icr is not None
+            and rx.isf is not None
+            and rx.icr == cfg.insulin.icr
+            and rx.isf == cfg.insulin.isf
+        ),
     }
 
 
@@ -161,6 +200,8 @@ def _fmt_text(rep: dict, tzinfo) -> str:
         L.append(f"  {kind:<12}{k['count']:>3} doses   {k['units']} u")
     L.append("")
 
+    L.extend(_fmt_basal(rep.get("prescription") or {}, rep.get("basal_adherence") or {}))
+
     cc = rep["carb_coverage"]
     L.append(f"CARB LOGGING — {cc['with_carbs']}/{cc['total']} meals have a carb count ({cc['percent']}%)")
     if cc.get("partial"):
@@ -186,6 +227,51 @@ def _fmt_text(rep: dict, tzinfo) -> str:
         L.append("")
         L.extend(_fmt_backtest(bt, tzinfo))
     return "\n".join(L)
+
+
+def _fmt_basal(rx: dict, ad: dict) -> list[str]:
+    """Basal per day, and the prescription it is measured against.
+
+    The prescription line always carries its review date. Wording stays in the
+    past tense throughout ("prescribed", "logged") — this reports what was
+    recorded against what was written down, and neither half is an instruction.
+    """
+    if not ad.get("days"):
+        return []
+    L = ["BASAL BY DAY"]
+    if rx.get("configured"):
+        bits = []
+        if rx.get("basal_product"):
+            bits.append(rx["basal_product"])
+        if rx.get("basal_units") is not None:
+            bits.append(f"{rx['basal_units']} u")
+        if rx.get("basal_timing"):
+            bits.append(rx["basal_timing"])
+        if bits:
+            L.append(f"  prescribed: {', '.join(bits)}  (as at {rx.get('reviewed') or 'undated'})")
+    else:
+        L.append("  no prescription recorded — see [prescription] in the config")
+
+    for e in ad["days"]:
+        mark = "  (part day)" if e.get("partial") else ""
+        tick = ""
+        if e["matches_prescribed"] is True:
+            tick = "  ✓"
+        elif e["matches_prescribed"] is False and not e.get("partial"):
+            tick = "  ✗"
+        L.append(f"  {e['day']}  {e['count']} dose(s)  {e['units']} u{tick}{mark}")
+
+    whole = ad["whole_day_count"]
+    if ad["prescribed_units"] is not None:
+        L.append(
+            f"  {ad['days_matching_prescribed']}/{whole} whole days match the prescribed dose"
+        )
+    if ad["days_with_none"]:
+        L.append(f"  {ad['days_with_none']} whole day(s) with no basal logged")
+    if ad["days_with_multiple"]:
+        L.append(f"  {ad['days_with_multiple']} whole day(s) with more than one basal logged")
+    L.append("")
+    return L
 
 
 def _fmt_backtest(bt: dict, tzinfo) -> list[str]:

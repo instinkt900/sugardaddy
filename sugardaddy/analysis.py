@@ -335,6 +335,83 @@ def insulin_summary(doses: list[InsulinDose]) -> dict:
     }
 
 
+def basal_adherence(
+    doses: list[InsulinDose],
+    start_utc: int,
+    end_utc: int,
+    tzinfo,
+    *,
+    prescribed_units: float | None = None,
+) -> dict:
+    """Basal doses per local day across the window, against the prescription.
+
+    This counts *days*, not doses, because that is the question a clinician
+    actually asks: was the once-daily dose taken each day? Two doses on one day
+    and none the next totals the same as one a day and means something quite
+    different.
+
+    ``prescribed_units`` is the clinician's figure when one has been recorded.
+    Note what it is used for and what it is not: days are compared against it to
+    count matches, and nothing here suggests, adjusts, or judges a dose. With no
+    prescription the day counts still stand on their own — the comparison fields
+    simply go None rather than the function inventing an expected value.
+
+    Days are local days, so a dose at 23:50 and one at 00:10 land on the dates a
+    person would put them on. Partial days at the window edges are included and
+    flagged, since the caller's window rarely lands on midnight.
+    """
+    basals = [d for d in doses if (d.kind or "") == "basal" and start_utc <= d.ts_utc <= end_utc]
+
+    by_day: dict[str, dict] = {}
+    day = datetime.fromtimestamp(start_utc, tzinfo).date()
+    last = datetime.fromtimestamp(end_utc, tzinfo).date()
+    while day <= last:
+        by_day[day.isoformat()] = {"day": day.isoformat(), "count": 0, "units": 0.0}
+        day += timedelta(days=1)
+
+    for d in basals:
+        key = datetime.fromtimestamp(d.ts_utc, tzinfo).date().isoformat()
+        # A dose can only fall outside the prebuilt range if the caller passed a
+        # dose list wider than its own window; ignore rather than inventing a day.
+        if key not in by_day:
+            continue
+        by_day[key]["count"] += 1
+        by_day[key]["units"] += d.units
+
+    days = []
+    for entry in by_day.values():
+        entry["units"] = round(entry["units"], 1)
+        # "matches" is only meaningful with a prescription to match against.
+        entry["matches_prescribed"] = (
+            None
+            if prescribed_units is None
+            else (entry["count"] == 1 and abs(entry["units"] - prescribed_units) < 0.05)
+        )
+        days.append(entry)
+    days.sort(key=lambda e: e["day"])
+
+    # The edge days are partial, so a zero there may just be the window cutting
+    # in after the usual dose time. Flag them instead of counting them as missed.
+    if days:
+        days[0]["partial"] = True
+        days[-1]["partial"] = True
+
+    whole = [e for e in days if not e.get("partial")]
+    return {
+        "days": days,
+        "day_count": len(days),
+        "whole_day_count": len(whole),
+        "dose_count": len(basals),
+        "total_units": round(sum(d.units for d in basals), 1),
+        "days_with_none": sum(1 for e in whole if e["count"] == 0),
+        "days_with_multiple": sum(1 for e in whole if e["count"] > 1),
+        "prescribed_units": prescribed_units,
+        "days_matching_prescribed": (
+            None if prescribed_units is None else sum(1 for e in whole if e["matches_prescribed"])
+        ),
+    }
+
+
 def smooth_glucose(
     readings: list[GlucoseReading],
     units: str,

@@ -4,9 +4,11 @@ description: >-
   Pull the live sugardaddy glucose database off the serve host and produce a
   retrospective glucose-management review — time-in-range, variability, dawn /
   time-of-day patterns, low episodes, insulin behaviour, and post-meal
-  responses — with a comparison against the previous review. Use when the user
-  asks to "review", "analyse", or "look at" their sugardaddy / CGM / glucose /
-  insulin / meal data, or to check how the numbers are trending.
+  responses — with a comparison against the previous review. Also writes a
+  standalone clinician-ready report (Markdown, HTML and PDF) for handing to a
+  health professional. Use when the user asks to "review", "analyse", or "look
+  at" their sugardaddy / CGM / glucose / insulin / meal data, to check how the
+  numbers are trending, or to prepare something for their doctor.
 ---
 
 # sugardaddy glucose review
@@ -16,6 +18,14 @@ the data: what the glucose, meals and insulin show about patterns and habits.
 The heavy number-crunching lives in the repo (`sugardaddy report`), so this skill
 only **fetches**, **runs the report**, and **interprets** — including the trend
 versus the last review.
+
+Every run produces **two** things for **two different readers**:
+
+1. **The chat review** — for the user, who knows the system. Trend-aware,
+   conversational, comparing against the last run.
+2. **The clinician report** — a standalone `.md` / `.html` / `.pdf` for a
+   professional with no knowledge of the system and no time. Written to be
+   skim-read and judged on its suggested experiments.
 
 ## What this system is for
 
@@ -45,7 +55,9 @@ skill's job — nor is it the job of any number the report emits.
   file. Only `connection.env.example` (placeholders) is committed. Do not paste a
   real host into the repo, this file, or the output.
 - **Health data stays local.** The review `history/` under this skill dir holds
-  glucose data; it lives only under `~/.claude` and must never be committed.
+  glucose data — the JSON runs and the generated clinician report in all three
+  formats (`.md`, `.html`, `.pdf`). It lives only under `~/.claude` and must never
+  be committed. Never write a generated report into the repo clone.
 - Delete the temp DB copies (local and on the server) when done.
 
 ## Environment
@@ -102,10 +114,111 @@ and ask the user rather than guessing.
    `"$SKILL_DIR/history/report-<YYYYMMDD-HHMM>.json"`.
    (Do not fabricate a timestamp.)
 
-6. **Clean up** the local temp:
+6. **Write the chat review** — the conversational output described under "Output
+   shape" below. This is the primary response to the user.
+
+7. **Write the clinician report** as well, every run. It is a *different document
+   for a different reader*, not a copy of the chat review — see "The clinician
+   report" below for its rules and section order. Write it to
+   `"$SKILL_DIR/history/clinician-report-<YYYYMMDD>.md"`.
+
+8. **Render the clinician report** to HTML and PDF:
+   ```bash
+   python3 "$SKILL_DIR/render_report.py" "$SKILL_DIR/history/clinician-report-<YYYYMMDD>.md"
+   ```
+   The script is stdlib-only and drives headless Chrome for the PDF. If it reports
+   the PDF failed, the HTML beside it is still complete — tell the user to open
+   that and print to PDF from the browser. Do not install anything to fix it.
+   Tell the user the paths of all three files at the end.
+
+9. **Clean up** the local temp:
    ```bash
    rm -f /tmp/sd_live.db
    ```
+
+## The clinician report
+
+Every run also produces a document the user can hand to a clinician who has never
+seen this system. Assume that reader has **two minutes and no context**. They must
+be able to learn what the system is, see the control figures, and judge whether
+the suggested experiments are sensible — without reading the whole thing.
+
+Write it with the **`ste-writing` skill in STE-flavored mode** (invoke that skill
+and follow it). Short sentences, active voice, one idea per sentence, no
+semicolons, no contractions. Two deliberate departures from that skill:
+
+- **Keep British/Australian spelling** (`hypoglycaemia`, not `hypoglycemia`). STE
+  mandates American spelling. This document goes to an Australian clinician, so
+  the house style wins. Everything else in the skill applies.
+- **Leave the experiments table in ordinary prose.** Splitting those cells into
+  short sentences breaks the cause-and-effect pairing that makes the table
+  readable at a glance.
+
+### Section order
+
+1. **How the system collects this data** — bullets. The CGM and that readings are
+   automatic. That the user logs insulin and meals by hand. That the analysis is
+   fixed arithmetic, not a model or a dose calculator. The purpose of the system.
+   **That the record is complete** (see the guardrail below). Units and target
+   range.
+2. **Overall control** — headline metrics table with a *target* column so the
+   reader can judge each figure without knowing the norms. Then by-day and
+   by-time-of-day tables. Mark part days at the window edges with a footnote.
+   Follow with one short summary sentence naming the main deficit.
+3. **Observations from the data** — bullets grouped under glucose pattern,
+   insulin, hypoglycaemia, and meals. Facts only. Bold the finding, not the
+   commentary.
+4. **Suggested changes and experiments** — a table: *question from the data* →
+   *suggested experiment* → *what to watch*. This is the section the clinician
+   will judge the report by, so every row must trace to a specific finding above.
+   Order by likely impact. **No dose, ratio, rate or timing number appears here**
+   — the guardrail at the top of this file applies with full force.
+5. **Data quality and limits** — split into strengths and limits. Always name:
+   that carb figures are estimates, the window length and any part days, and that
+   exercise, illness, stress, alcohol and sleep are not captured at all. Name the
+   insulin products from `prescription` — and if that section is absent, list the
+   missing products as a limit instead.
+
+### Prescription and basal adherence
+
+`report` emits a `prescription` block and a `basal_adherence` block. Both are
+recorded fact, not calculation — treat them accordingly.
+
+- When `prescription.configured` is true, put the products and the prescribed
+  basal dose in section 1, **always with the `reviewed` date beside them**. Never
+  print a prescription without its age. If the date is more than a year old, say
+  so — that is worth a clinician's attention on its own.
+- `basal_adherence` gives per-local-day dose counts. State it as adherence
+  ("prescribed 36 u, logged on 6 of 7 days"). Days marked `partial` are window
+  edges — never report those as missed doses.
+- `days_with_multiple` matters as much as `days_with_none`. Two half doses in a
+  day is not the same event as one full one.
+- When `prescription.configured` is false, say the prescription is not recorded
+  and keep the day counts. Do not guess an expected dose from the mode of the
+  logged ones — an inferred target is exactly the kind of number this app must
+  not invent.
+- `matches_insulin_section` tells you whether the experimental bolus reference is
+  running on the clinician's own ratios or the user's placeholders. It stays
+  false until both `icr` and `isf` appear in `[prescription]` *and* equal the
+  `[insulin]` values. **While it is false, the exclusion of `bolus_backtest` from
+  the clinician report stands.**
+
+### Clinician-report guardrails
+
+- **Exclude `bolus_backtest` entirely, and say that you excluded it.** Handing a
+  clinician calculated dose figures derived from placeholder ISF/ICR invites them
+  to read those figures as validated. State in the limits section that the report
+  omits an experimental calculation running on unvalidated placeholder values.
+- **An absent entry means a missed event, not a missed log.** The user maintains
+  the record as authoritative and re-runs the report after fixing any gap. So
+  state gaps as findings with consequences ("the patient missed a basal dose on
+  <date>"), never as ambiguity ("it cannot be determined whether..."). Say this
+  convention explicitly in section 1 so the clinician knows absence is evidence.
+  Keep it separate from timestamp precision, which *is* a real limit.
+- Distinguish hypo treatment from uncovered intake when classifying meals with no
+  bolus. Check the starting glucose and the distance to the nearest low episode.
+  Do not assume — the two look identical in the totals and mean opposite things.
+- The report describes **the patient**, not "you". It is a handover document.
 
 ## What to look for when interpreting
 

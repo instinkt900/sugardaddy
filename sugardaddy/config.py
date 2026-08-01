@@ -8,6 +8,7 @@ one-time HA backfill token from SUGARDADDY_HA_TOKEN.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -69,6 +70,56 @@ class InsulinConfig:
 
 
 @dataclass
+class PrescriptionConfig:
+    """What the clinician actually prescribed. Recorded fact, not a parameter.
+
+    Deliberately separate from [insulin]: that section holds numbers the maths
+    consumes (the activity curve, ISF/ICR), while everything here is a note the
+    app only ever *reports back*. Nothing in this dataclass may be fed into a
+    calculation — the moment a prescribed figure drives an output, the app has
+    started relaying an instruction rather than remembering one, which is the
+    line docs/plans/insulin-awareness.md draws.
+
+    It earns its place because it is the one target in the system the app did not
+    invent: provenance is a person, so it needs no hedging. That makes basal
+    adherence reportable ("prescribed 36 u, logged on 6 of 7 days") without the
+    app ever expressing an opinion about the dose.
+
+    ``reviewed`` is the date the prescription was last set, and it is reported
+    alongside the values on purpose. A stale prescription echoed as current is
+    worse than none, so the age has to travel with the number.
+    """
+
+    reviewed: str = ""        # ISO date (YYYY-MM-DD) the prescription was last set
+    basal_product: str = ""   # e.g. "Toujeo" — label only, never matched on
+    basal_units: float | None = None
+    basal_timing: str = ""    # free text, e.g. "evening"
+    rapid_product: str = ""
+    # If the clinician gave these, they belong here rather than in [insulin] —
+    # same numbers, but this section records that a professional chose them.
+    # [insulin].isf/icr stay the values the experimental reference actually runs
+    # on, which may still be the user's own placeholders.
+    icr: float | None = None
+    isf: float | None = None
+
+    @property
+    def configured(self) -> bool:
+        """True when anything at all has been recorded. An empty section means
+        'not asked yet' and must read as absent, never as a prescription of nil."""
+        return any(
+            (
+                self.reviewed,
+                self.basal_product,
+                self.basal_units is not None,
+                self.basal_timing,
+                self.rapid_product,
+                self.icr is not None,
+                self.isf is not None,
+            )
+        )
+
+
+@dataclass
 class NotifyConfig:
     """Push notifications. One reminder only: basal has gone unlogged.
 
@@ -118,6 +169,7 @@ class Config:
     database: DatabaseConfig
     web: WebConfig
     insulin: InsulinConfig = field(default_factory=InsulinConfig)
+    prescription: PrescriptionConfig = field(default_factory=PrescriptionConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
     backfill: BackfillConfig = field(default_factory=BackfillConfig)
     # Env-only: the VAPID signing key. Anyone holding it can push to every
@@ -191,6 +243,8 @@ def load_config(path: str | os.PathLike) -> Config:
     database = DatabaseConfig(**_known(raw.get("database", {}), DatabaseConfig))
     web = WebConfig(**_known(raw.get("web", {}), WebConfig))
     insulin = InsulinConfig(**_known(raw.get("insulin", {}), InsulinConfig))
+    prescription = PrescriptionConfig(**_known(raw.get("prescription", {}), PrescriptionConfig))
+    _check_prescription(prescription)
     notify = NotifyConfig(**_known(raw.get("notify", {}), NotifyConfig))
     _check_notify(notify)
 
@@ -204,11 +258,35 @@ def load_config(path: str | os.PathLike) -> Config:
         database=database,
         web=web,
         insulin=insulin,
+        prescription=prescription,
         notify=notify,
         backfill=backfill,
     )
     cfg.vapid_private_key = os.environ.get("SUGARDADDY_VAPID_PRIVATE_KEY", "").strip()
     return cfg
+
+
+def _check_prescription(rx: PrescriptionConfig) -> None:
+    """Validate [prescription] only when something has been recorded.
+
+    The date is required alongside any value because the whole section is only
+    trustworthy with its age attached — see the class docstring. Failing at load
+    is the right moment: a report that quietly prints an undated prescription has
+    already misled whoever reads it.
+    """
+    if not rx.configured:
+        return
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", rx.reviewed or ""):
+        raise ConfigError(
+            "[prescription] reviewed must be an ISO date (YYYY-MM-DD) whenever any "
+            f"other value is set — a prescription is only readable with its age (got {rx.reviewed!r})"
+        )
+    if rx.basal_units is not None and rx.basal_units <= 0:
+        raise ConfigError("[prescription] basal_units must be > 0 when set")
+    for name in ("icr", "isf"):
+        value = getattr(rx, name)
+        if value is not None and value <= 0:
+            raise ConfigError(f"[prescription] {name} must be > 0 when set")
 
 
 def _check_notify(notify: NotifyConfig) -> None:
