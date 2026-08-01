@@ -203,12 +203,18 @@ data", or run `/sugardaddy-review`.
    ```bash
    bash deploy/install-server.sh          # or: cd docker && docker compose up -d --build
    ```
-3. Check that the app answers:
+3. Check that the app answers. The container always listens on 8080 *inside*,
+   but `SUGARDADDY_PORT` decides the host port — ask Docker rather than
+   assuming, or you may end up checking a different service entirely:
    ```bash
-   curl -s http://localhost:8080/healthz
+   cd docker && docker compose port sugardaddy 8080   # -> 0.0.0.0:<host-port>
+   curl -s http://localhost:<host-port>/healthz       # -> {"status":"ok","readings":N}
    ```
-4. Open the UIs. Phone: `http://<host>:8080/` · Desktop:
-   `http://<host>:8080/desktop`
+   `install-server.sh` prints the right port and runs this check for you.
+   A reply without a `readings` count is something else on that port, not this
+   app.
+4. Open the UIs. Phone: `http://<host>:<host-port>/` · Desktop:
+   `http://<host>:<host-port>/desktop`
 
 ## Setup — seed history from Home Assistant (optional, one-time)
 

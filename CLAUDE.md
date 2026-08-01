@@ -158,10 +158,12 @@ code/template/static change needs an **image rebuild** — a restart alone won't
 pick it up.
 
 - Compose project + container + image are all named `sugardaddy`. Container
-  listens on **8080 internally**; host port is `${SUGARDADDY_PORT:-8080}` from
-  `docker/.env`. Data is a named volume `sugardaddy-data` mounted at `/data`;
-  the repo-root `config.toml` is bind-mounted read-only (compose mounts
-  `../config.toml`). Healthcheck hits `/healthz`.
+  listens on **8080 internally**; the host port is `${SUGARDADDY_PORT:-8080}`
+  from `docker/.env` and **is remapped on the real serve host — never assume
+  8080**. Data is a named volume `sugardaddy-data` mounted at `/data`; the
+  repo-root `config.toml` is bind-mounted read-only (compose mounts
+  `../config.toml`). Healthcheck hits `/healthz` *inside* the container, so it
+  goes green regardless of the host mapping and proves nothing about it.
 - Deploy flow (run on the host, in the repo clone):
   ```
   git pull --ff-only && cd docker && docker compose up -d --build
@@ -170,8 +172,19 @@ pick it up.
 - **Back up the DB before any schema-changing deploy** (`docker cp
   sugardaddy:/data/sugardaddy.db <backup>`); schema migrations live in
   `db.init_db()` and run on startup.
-- Verify after deploy: `curl :<port>/healthz` → `{"status":"ok","readings":N}`
-  and container `Up (healthy)`.
+- Verify after deploy — **resolve the host port first, don't guess it**:
+  ```
+  docker compose port sugardaddy 8080        # -> 0.0.0.0:<host-port>
+  curl -s localhost:<host-port>/healthz      # -> {"status":"ok","readings":N}
+  ```
+  Then check the container is `Up (healthy)`. This trips people up repeatedly:
+  the host runs other services, so `curl :8080` can get a cheerful reply from
+  something else entirely and read as a successful deploy. **Treat a `/healthz`
+  reply without a `readings` count as the wrong service, not a passing check** —
+  matching the payload is what identifies this app. `install-server.sh` resolves
+  the port and runs the check itself, so prefer it over a bare `compose up`.
+  Same trap when grepping the UIs over SSH: quote patterns carefully and confirm
+  a match count is non-zero before reading anything into it.
 
 ## The review skill
 
