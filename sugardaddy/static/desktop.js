@@ -322,13 +322,19 @@
                ticks: { color: "#8b90a0", maxTicksLimit: 10,
                         callback: (v) => SD.axisStamp(v, chartPayload.to - chartPayload.from) },
                grid: { color: "#2c303c" } },
-          y: { ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
+          // Glucose on the RIGHT, insulin on the left — the opposite of the
+          // conventional primary-axis-left layout, and deliberate. The chart ends
+          // at now, so the reading being read off it is always the rightmost
+          // point; putting its scale on the far side of the chart from where the
+          // eye already is invites reading the value against the insulin axis.
+          // The scale that matters most sits next to the value that matters most.
+          y: { position: "right", ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
                title: { display: true, text: data.units, color: "#8b90a0" } },
-          y1: { position: "right", beginAtZero: true, ticks: { color: "#8b90a0" },
+          y1: { position: "left", beginAtZero: true, ticks: { color: "#8b90a0" },
                 grid: { display: false },
                 title: { display: true, text: "insulin (u)", color: "#8b90a0" } },
           // hidden: auto-scales the activity curve for shape comparison only
-          y2: { position: "right", beginAtZero: true, display: false },
+          y2: { position: "left", beginAtZero: true, display: false },
         },
       },
       plugins: [SD.targetBand(data.target_low, data.target_high), lastValueTag, crosshair],
