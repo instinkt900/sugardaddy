@@ -1,4 +1,4 @@
-// Phone UI: tab switching, a compact 24h glucose chart with live refresh, and
+// Phone UI: tab switching, a compact 12h glucose chart with live refresh, and
 // the meal "plate builder" (foods + counts, saved-meal templates).
 (function () {
   // Swap the datetime-local inputs for 24-hour ones before anything reads them.
@@ -72,6 +72,11 @@
 
   // ================= live refresh (current reading + mini chart) =============
   const REFRESH_MS = 60000;
+  // The mini chart is ~128px tall on a phone. A full day of readings, doses and
+  // meal markers packed into that is a smear you can't read a shape off; half a
+  // day is still more than enough context for "where am I heading". The desktop
+  // keeps the wider windows.
+  const CHART_HOURS = 12;
 
   function statusClass(c) {
     if (!c.has_reading) return "";
@@ -127,7 +132,7 @@
   function draw() {
     const ctx = document.getElementById("mini-chart");
     if (!ctx || typeof Chart === "undefined") return;
-    fetch("/api/timeline")
+    fetch(`/api/timeline?hours=${CHART_HOURS}`)
       .then((r) => r.json())
       .then((data) => {
         const g = data.glucose.map((p) => ({ x: p.t, y: p.v }));
@@ -385,7 +390,10 @@
       if (r.correction_units != null) bits.push(`${signedU(r.correction_units)} correction`);
       if (r.iob_units) bits.push(`−${uStr(r.iob_units)} active`);
       if (d.glucose != null && !d.glucose_stale) {
-        bits.push(`at ${d.glucose}, target ${d.target} ${d.units}`);
+        // Both to the precision the unit is conventionally quoted at — JSON
+        // hands back 7.0 as 7, and "at 5.1, target 7" reads like two scales.
+        const g = (n) => n.toFixed(d.units === "mg/dL" ? 0 : 1);
+        bits.push(`at ${g(d.glucose)}, target ${g(d.target)} ${d.units}`);
       }
       refParts.textContent = bits.join(" · ");
       refWhy.textContent = why.length ? `* ${why.join("; ")}` : "";

@@ -19,7 +19,7 @@ Everything runs on your own infrastructure.
   every reading in a local SQLite database and skips duplicates.
 - **Two web UIs, one backend:**
   - **Phone** (`/`) — built for input. It shows the current reading and trend,
-    and it refreshes automatically. Below that sit a compact 24h chart and a
+    and it refreshes automatically. Below that sit a compact 12h chart and a
     fast insulin form. The **meal plate builder** takes foods from the library
     or from ad-hoc text, each with a count, then logs the whole plate. To
     prefill the plate in one tap, load a **saved meal**.

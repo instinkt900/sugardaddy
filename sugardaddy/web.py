@@ -185,7 +185,20 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     # --- serialization ---------------------------------------------------
 
     def range_from_query(request: Request, default_span: int = _DAY) -> tuple[int, int]:
+        """Resolve the display window from `from`/`to`, or from `hours`.
+
+        `hours=N` means "the last N hours", ending at the server's now. It exists
+        for the phone, whose chart is a fixed window with no picker: asking for a
+        span keeps the arithmetic on the side that owns the clock, so a device
+        running a few minutes off doesn't pin the x axis away from its own data.
+        The desktop, which has a picker and genuinely means *those* instants,
+        keeps sending explicit `from`/`to`.
+        """
         now = now_epoch()
+        hours = _opt_num(request.query_params.get("hours"))
+        if hours:
+            span = int(max(1.0, min(hours, 24 * 365)) * 3600)
+            return now - span, now
         try:
             end = int(request.query_params.get("to", now))
             start = int(request.query_params.get("from", end - default_span))
