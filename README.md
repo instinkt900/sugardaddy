@@ -1,141 +1,205 @@
 # Sugar Daddy
 
-Sugar Daddy is a small, self-contained app for people who use a **FreeStyle
-Libre** CGM. It ingests your glucose readings over time. You log **insulin
-doses** and **meals** from your phone. A desktop dashboard shows all of it on
-one timeline.
+Sugar Daddy is a small self-hosted app for people who wear a **FreeStyle Libre**
+continuous glucose monitor (CGM). It collects glucose readings over time. It also
+records insulin doses, meals, and free-text notes. A desktop dashboard shows all
+of it on one timeline.
 
-The app connects **directly to LibreLinkUp**, the same sharing service that the
-Home Assistant Libre integration uses. It needs no Home Assistant at runtime.
-Everything runs on your own infrastructure.
+The app reads glucose directly from **LibreLinkUp**, the Abbott sharing service.
+It needs no Home Assistant at runtime. It runs on private hardware and keeps
+every reading in a local SQLite file.
 
-> **Not a medical device.** Sugar Daddy keeps personal records and supports
-> *retrospective* analysis. Use it to find patterns to discuss with your care
-> team. Do not use it for real-time dosing decisions.
+> ## ⚠️ Not a medical device
+>
+> Sugar Daddy keeps personal records and supports **retrospective** review. It is
+> **not a medical device**. It gives **no medical advice**.
+>
+> Every number, chart, and report is **a source of data, not guidance**. The app
+> describes what the record holds. It never states what to do about it.
+>
+> Do not use it for real-time treatment decisions. Take the patterns it shows to
+> a qualified clinician, and let that person decide what they mean.
 
-## What it does
+---
 
-- **Glucose ingest** — the app reads LibreLinkUp at a set interval. It stores
-  every reading in a local SQLite database and skips duplicates.
-- **Two web UIs, one backend:**
-  - **Phone** (`/`) — built for input. It shows the current reading and trend,
-    and it refreshes automatically. Below that sit a compact 12h chart and a
-    fast insulin form. The **meal plate builder** takes foods from the library
-    or from ad-hoc text, each with a count, then logs the whole plate. To
-    prefill the plate in one tap, load a **saved meal**.
-  - **Desktop** (`/desktop`) — built for review. A large interactive chart plots
-    the glucose line, the target band, and markers for doses and meals. Pick any
-    date range. Sort the tables, and add, edit, or delete rows inline. Analysis
-    panels sit alongside. This UI also manages the food library and saved meals.
-    The bold line is **smoothed glucose**: outliers rejected, then averaged over
-    about half an hour, which removes the sensor wobble described in
-    [Notes and limitations](#notes-and-limitations). The raw **sensor readings**
-    stay on the chart behind it, in faint grey — they are what was actually
-    measured, and the smoothed line is derived from them. Toggle either from the
-    legend. The "now" badge always reads the latest real reading, never the
-    smoothed value.
-- **Composite meals** — a meal is a plate of **foods**, each with a count, for
-  example 1 sandwich, 1 juice, and 2 biscuits. The app totals the carbs and
-  calories.
-- **Food library** — reusable foods with a name, description, carbs, and
-  calories. Add, edit, and delete them freely, and every device sees the same
-  library. Names are unique and ignore case. If you save a name again, the app
-  updates the food that already has it.
-- **Saved meals** — named plates for fast logging, with **Update** and **Save as
-  new**. A saved meal links live to the food library, so a correction to a food
-  reaches every saved meal that uses it. History is a snapshot. If you edit or
-  delete a food or a saved meal, the meals you already logged never change.
-- **Analysis** of the timeline — time in range, average glucose, estimated GMI,
-  and high and low counts. It also measures the 2-hour glucose response after
-  each logged meal.
-- **Daily intake table** (desktop) — average glucose, carbs, calories, and
-  mealtime insulin per day, with a per-day average. Basal is excluded from the insulin total, because
-  one long-acting dose would hide the mealtime doses. A `*` marks a day where not
-  every meal carries the figure, so the total is a floor and not a fact. It also
-  marks a day the sensor did not cover end to end, because an average over half a
-  day does not compare to a whole one. This
-  table keeps **its own range** (3d, 7d, 30d, or a day count you type), separate
-  from the chart. Days always start at local midnight, so no row is a part day.
-  Today is tagged **so far** and stays out of the average.
-- **Basal reminder** — the app can send your phone one notification. It tells you
-  when no **basal** dose has been logged for more than a day. It reports a gap in
-  the log. It never tells you to take a dose. This feature is off by default. See
-  [Notifications](#notifications).
-- **History seed** — import once from an existing Home Assistant install. This
-  step is optional, and it gives your charts depth from day one.
+## Features
+
+**Glucose ingest.** The app polls LibreLinkUp on a set interval. It writes each
+reading to SQLite and drops duplicates. Storage is always UTC and mg/dL. The
+display converts to the configured timezone and unit.
+
+**Phone interface (`/`).** This screen is built for input. It shows the current
+reading, the trend arrow, the active insulin, and where that insulin sits on its
+action curve. Below sits a compact 12-hour chart and three log forms:
+
+- **Insulin** — units, type (bolus, correction, or basal), time, optional note.
+- **Meal** — the plate builder, described below.
+- **Note** — free text and a time.
+
+**Desktop interface (`/desktop`).** This screen is built for review. A large
+chart plots the glucose line, the target band, the active-insulin curve, and
+markers for doses, meals, and notes. Any date range works. Tables below the chart
+add, edit, and delete rows in place. This screen also manages the food library
+and the saved meals.
+
+The bold chart line is **smoothed glucose**. The app rejects outliers, then
+averages over about half an hour. This removes the sensor wobble described under
+[Known limitations](#known-limitations). The raw **sensor readings** stay behind
+it in faint gray, because those are the real measurements. The legend toggles
+either line. The "now" badge always reads the latest real reading.
+
+**Composite meals.** A meal is a plate of **foods**, each with a count. One
+sandwich, one juice, and two biscuits is a single meal. The app totals the carbs
+and the calories.
+
+**Food library.** Foods are reusable records with a name, a description, carbs,
+and calories. Names are unique and ignore case. Saving a name again updates the
+food that already holds it. Every device sees the same library.
+
+**Saved meals.** These are named plates for fast logging. A saved meal links live
+to the food library, so a correction to a food reaches every saved meal that uses
+it. Logged history is a snapshot instead. Editing or deleting a food never
+changes a meal that was already logged.
+
+**Context notes.** A note is a time and some words. It captures what the other
+records cannot: illness, exercise, travel, a bad night. Notes carry no structure
+and no categories, because a form that asks for a classification first is a form
+people stop filling in. Notes appear on the desktop chart, in the tables, and in
+the reports, next to the day they explain.
+
+**Analysis.** The app measures time in range, average glucose, estimated GMI, and
+high and low counts. It also measures the 2-hour glucose response after each
+logged meal.
+
+**Daily intake table** (desktop). This table shows average glucose, carbs,
+calories, and mealtime insulin per day, plus a per-day average. It excludes basal
+from the insulin total, because one long-acting dose would hide the mealtime
+doses. A `*` marks a day where some meals lack the figure, so the total is a
+floor and not a fact. The same mark appears when the sensor did not cover the
+whole day. This table keeps **its own range** (3, 7, or 30 days, or a typed day
+count), separate from the chart. Days start at local midnight, so no row is a
+part day. Today carries a **so far** tag and stays out of the average.
+
+**Prescription record.** The config holds what a clinician prescribed, with the
+date of the last review. The app never feeds these values into a calculation. It
+reports logged basal doses against the prescribed dose. A report can then state
+"prescribed 36 u, logged on 6 of 7 days", and express no opinion about the dose
+itself.
+
+**Basal reminder.** The app can send one kind of notification. It reports that no
+**basal** dose has been logged for more than a day. It describes a gap in the
+log. It never asks for a dose. This feature is off by default. See
+[Notifications](#notifications).
+
+**Experimental bolus reference.** When the config holds an insulin sensitivity
+factor, the app runs a textbook formula against doses that were already decided.
+It shows the result on the phone meal form, in the desktop post-meal table, and
+in `report`. The formula is the thing under test, not the person dosing. It is
+off unless someone sets `isf`. See
+[`docs/plans/insulin-awareness.md`](docs/plans/insulin-awareness.md) for the full
+reasoning and the safety boundary.
+
+**History seed.** A one-time import from an existing Home Assistant install gives
+the charts depth from the first day. This step is optional.
 
 ## How it works
 
 ```
-        LibreLinkUp (Abbott)                     your LAN / VPN
-   ┌───────────────────────────┐        ┌──────────────────────────────┐
-   │ glucose readings (~5 min)  │ HTTPS  │ sugardaddy serve (Docker)     │
-   │  · latest() + graph()      │ ─────► │  · poll → SQLite (dedup)      │
-   └───────────────────────────┘        │  · FastAPI: phone + desktop   │
-                                         │  · JSON API + analysis        │
-   ┌───────────────────────────┐        │                               │
-   │ Home Assistant (optional)  │  REST  │  phone:   http://host:8080/   │
-   │  · recorder history        │ ──────►│  desktop: http://host:8080/…  │
-   │  · ONE-TIME backfill only  │  seed  └──────────────────────────────┘
-   └───────────────────────────┘
+   LibreLinkUp (Abbott)                  Home Assistant (optional)
+   readings, about every 5 minutes       months of past readings
+              │                                     │
+              │ HTTPS poll                          │ REST, one-time seed
+              ▼                                     ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │  sugardaddy serve  (Docker, on a private LAN or VPN)     │
+   │                                                          │
+   │  poll ──► SQLite (UTC, mg/dL, deduplicated)              │
+   │  FastAPI ──► phone UI  ·  desktop UI  ·  JSON API        │
+   │  analysis ──► report (text or JSON), basal reminder      │
+   └──────────────────────────────────────────────────────────┘
+              │                                     │
+              ▼                                     ▼
+      phone browser (log)                  desktop browser (review)
 ```
 
-- A small `GlucoseSource` interface hides the source of the readings.
-  LibreLinkUp is the default. The app uses Home Assistant *only* for the
-  one-time backfill.
-- Credentials live in the environment, in the Docker `.env` file. They never
-  reach the committed config or the database.
-- Access is LAN or VPN only, with no auth by design. The app trusts the network
-  it binds to. Do not expose it directly to the internet.
+- A small `GlucoseSource` interface hides where the readings come from.
+  LibreLinkUp is the default. Home Assistant serves the one-time backfill only.
+- Credentials live in the environment, through the Docker `.env` file. They never
+  reach the tracked config or the database.
+- The app has no authentication by design. It trusts the network it binds to.
+  Run it on a LAN or a VPN. Do not expose it to the internet.
 
-## Example setup
+### Example network
 
-The addresses below are placeholders from RFC 5737. Substitute your own. A flat
-LAN is all you need, and you can reach it over a VPN when you are away.
+The addresses below are RFC 5737 placeholders. Substitute real ones. A flat LAN
+is enough, and a VPN covers access from outside.
 
 | piece | example | notes |
 |-------|---------|-------|
-| serve host | `192.0.2.20:8080` | any Docker-capable box on your LAN |
+| serve host | `192.0.2.20:<port>` | any Docker-capable box on the LAN |
 | Home Assistant | `192.0.2.10:8123` | optional, for the one-time history seed |
-| your phone or PC | — | on the LAN or VPN, and it opens the URLs above |
+| phone or PC | — | on the LAN or the VPN, and opens the URLs above |
 
-## Repo layout
+## Install and run (Docker)
 
-```
-sugardaddy/
-  cli.py         entrypoint: serve | ingest | backfill | init-db
-  config.py      one TOML → typed config (secrets from env, never in TOML)
-  constants.py   unit conversion, trend arrows, default target range
-  models.py      typed rows (readings, doses, foods, meals + items, templates)
-  db.py          SQLite schema + queries (UTC epoch, dedup on ts)
-  source.py      GlucoseSource ABC + LibreLinkUpSource (pylibrelinkup)
-  ingest.py      background poll loop (auth → latest()/graph() → store)
-  backfill.py    one-shot HA history REST import
-  analysis.py    time-in-range, GMI, high/low counts, post-meal response
-  web.py         FastAPI app: phone + desktop routes, JSON API, /healthz
-  templates/     Jinja: base, phone/, desktop/, partials/
-  static/        vendored htmx + Chart.js, CSS, phone.js, desktop.js
-config.example.toml   the whole app in one file
-docker/               Dockerfile + compose + .env.example
-deploy/install-server.sh
-```
+1. Copy the config files and add the secrets:
+   ```bash
+   cp config.example.toml config.toml   # edit [librelink].region, [web] tz/units
+   cp docker/.env.example docker/.env   # LibreLinkUp email and password
+   ```
+   Use the **LibreLinkUp** account credentials. That is the follower account with
+   access to the Libre data.
+2. Build the image and start the container:
+   ```bash
+   bash deploy/install-server.sh          # or: cd docker && docker compose up -d --build
+   ```
+3. Check that the app answers. The container always listens on 8080 inside, but
+   `SUGARDADDY_PORT` sets the host port. Ask Docker for it rather than assuming
+   it, or the check may reach a different service:
+   ```bash
+   cd docker && docker compose port sugardaddy 8080   # -> 0.0.0.0:<host-port>
+   curl -s http://localhost:<host-port>/healthz       # -> {"status":"ok","readings":N}
+   ```
+   `install-server.sh` resolves the port and runs this check on its own. A reply
+   without a `readings` count comes from something else on that port.
+4. Open the interfaces. Phone: `http://<host>:<host-port>/`. Desktop:
+   `http://<host>:<host-port>/desktop`.
 
-## Commands
+The image bakes the code in with `COPY`. Any change to code, templates, or static
+files needs a rebuild. A plain restart keeps the old build.
 
-Run `sugardaddy <command>` if you installed the package. Otherwise run
+## Optional: seed history from Home Assistant
+
+If Home Assistant already holds months of Libre history, import it once.
+
+1. In Home Assistant, create a long-lived token under **Profile → Security →
+   Long-lived access tokens**.
+2. Set `[backfill].ha_url` and `ha_entity` in `config.toml`.
+3. Put the token in `docker/.env` as `SUGARDADDY_HA_TOKEN`.
+4. Run the backfill once, inside the container:
+   ```bash
+   cd docker && docker compose run --rm sugardaddy backfill -c /app/config.toml --days 180
+   ```
+
+Home Assistant stores Australian sensors in mmol/L, and the import converts them
+to mg/dL. Pass `--unit mg/dL` when the sensor already reports mg/dL.
+
+## Command line
+
+Run `sugardaddy <command>` after a package install. Otherwise run
 `python -m sugardaddy <command>`.
 
 ```bash
 sugardaddy serve    -c config.toml            # web app + glucose poller
 sugardaddy ingest   -c config.toml [--once]   # poller only (--once = sync, then exit)
-sugardaddy backfill -c config.toml --days 90  # one-time HA history seed
-sugardaddy init-db  -c config.toml            # create the DB schema, then exit
+sugardaddy backfill -c config.toml --days 90  # one-time Home Assistant history seed
+sugardaddy init-db  -c config.toml            # create the SQLite schema, then exit
 sugardaddy report   -c config.toml [--days N] # retrospective analysis (text or --json)
 sugardaddy notify   -c config.toml [--dry-run] # push the basal reminder, if one is due
 sugardaddy vapid-keys                         # mint a Web Push signing key
 ```
 
-Add `-v` to get debug logs.
+Add `-v` for debug logs.
 
 ### `report` — retrospective analysis
 
@@ -145,13 +209,17 @@ It covers:
 - time in range, average glucose, and estimated GMI
 - glucose variability, as SD and CV
 - a breakdown per day and per hour of the day
-- discrete low episodes, where contiguous below-range runs collapse into single
+- context notes, grouped by day and printed ahead of the numbers
+- discrete low episodes, where runs of below-range readings collapse into single
   events
 - an insulin dose summary by kind
+- basal doses per day, against the recorded prescription
 - carb-logging coverage
 - the 2-hour glucose response after each logged meal
+- the experimental bolus reference, when the config holds an `isf`
 
-The command crunches numbers only. It makes no clinical judgments.
+The command crunches numbers. It makes no clinical judgment. Notes are the one
+qualitative part, and the app prints them exactly as they were written.
 
 ```bash
 sugardaddy report -c config.toml --days 7           # human-readable text
@@ -160,95 +228,26 @@ sugardaddy report -c config.toml --db /tmp/copy.db  # analyze a different DB fil
 ```
 
 `--db` overrides the database path from the config. Units, target range, and
-timezone still come from the config. Use it to analyze a copy of the live
-database that you copied from the serve host.
-
-### `sugardaddy-review` skill (Claude Code, optional)
-
-`deploy/skills/sugardaddy-review/` is a Claude Code skill. It fetches the live
-DB from the serve host, runs `report --json`, and writes a management-focused
-review. The review compares against the previous run and keeps a local history,
-so trends stay visible over time. The skill does the fetch and the
-interpretation. `sugardaddy report` still does the math.
-
-Install it on any machine you use:
-
-```bash
-bash deploy/install-skill.sh
-```
-
-The script copies the skill into `~/.claude/skills/sugardaddy-review/`. It also
-seeds a machine-local `connection.env`. Edit that file and point it at your
-serve host:
-
-```bash
-$EDITOR ~/.claude/skills/sugardaddy-review/connection.env   # set SD_REVIEW_HOST
-```
-
-`connection.env` holds your host and paths, and the review `history/` holds
-glucose data. Both stay per-machine, so never commit either one. The repo tracks
-`connection.env.example` alone. In Claude Code, ask to "review my sugardaddy
-data", or run `/sugardaddy-review`.
-
-## Setup — serve side (Docker)
-
-1. Copy the config and add your secrets:
-   ```bash
-   cp config.example.toml config.toml   # edit [librelink].region, [web] tz/units
-   cp docker/.env.example docker/.env   # LibreLinkUp email + password
-   ```
-   Use the **LibreLinkUp** account credentials. That is the follower account
-   that already has access to your Libre data.
-2. Build the image and start the container:
-   ```bash
-   bash deploy/install-server.sh          # or: cd docker && docker compose up -d --build
-   ```
-3. Check that the app answers. The container always listens on 8080 *inside*,
-   but `SUGARDADDY_PORT` decides the host port — ask Docker rather than
-   assuming, or you may end up checking a different service entirely:
-   ```bash
-   cd docker && docker compose port sugardaddy 8080   # -> 0.0.0.0:<host-port>
-   curl -s http://localhost:<host-port>/healthz       # -> {"status":"ok","readings":N}
-   ```
-   `install-server.sh` prints the right port and runs this check for you.
-   A reply without a `readings` count is something else on that port, not this
-   app.
-4. Open the UIs. Phone: `http://<host>:<host-port>/` · Desktop:
-   `http://<host>:<host-port>/desktop`
-
-## Setup — seed history from Home Assistant (optional, one-time)
-
-If HA already holds months of Libre history, import it so the charts start deep.
-
-1. In HA, create a long-lived token under **Profile → Security → Long-lived
-   access tokens**.
-2. Set `[backfill].ha_url` and `ha_entity` in `config.toml`.
-3. Put the token in `docker/.env` as `SUGARDADDY_HA_TOKEN`.
-4. Run the backfill once inside the container:
-   ```bash
-   cd docker && docker compose run --rm sugardaddy backfill -c /app/config.toml --days 180
-   ```
-
-HA stores AU sensors in mmol/L, and the import converts them to mg/dL. If your
-HA sensor already reports mg/dL, pass `--unit mg/dL`.
+timezone still come from the config. This flag suits a copy of the live database,
+pulled off the serve host for analysis somewhere else.
 
 ## Notifications
 
-The app sends **one** notification: a reminder that no **basal** dose has been
-logged for more than a day.
+The app sends **one** kind of notification. It reports that no **basal** dose has
+been logged for more than a day.
 
-Basal is the dose that is easy to forget. Unlike a bolus, it also stays invisible
-in the glucose trace for hours. So it is the one thing worth a nudge.
+Basal is the dose that is easy to forget. It also stays invisible in the glucose
+trace for hours, unlike a bolus. So it is the one event worth a reminder.
 
-> The notification is about your **log**, not your body. It says that no dose was
-> recorded. It never says to take one. If you took the dose and forgot to log it,
-> log it and the reminder stops.
+> The notification describes the **log**, not the body. It reports that no dose
+> was recorded. It never asks for a dose. A dose that was taken but not logged
+> stops the reminder as soon as someone logs it.
 
-The app is its own push server. It holds a VAPID key pair. It signs and encrypts
-every message itself. No third-party notification service is involved, and no API
-key. The browser push service (FCM on Android) only relays a blob that it cannot
-read. That relay is part of the browser, so you cannot self-host it. But nothing
-about your data is visible to it.
+The app is its own push server. It holds a VAPID key pair and signs and encrypts
+every message. No third-party notification service is involved, and no API key.
+The browser push service, such as FCM on Android, relays a blob that it cannot
+read. That relay is part of the browser and cannot be self-hosted. It still sees
+nothing of the data.
 
 ### Setup
 
@@ -256,94 +255,76 @@ about your data is visible to it.
    ```bash
    sugardaddy vapid-keys
    ```
-2. Put the key in the server environment as `SUGARDADDY_VAPID_PRIVATE_KEY`. For
-   the Docker deployment, put it in `docker/.env`. Never put it in
-   `config.toml`. Anyone who holds this key can push to your devices.
+2. Put the key in the server environment as `SUGARDADDY_VAPID_PRIVATE_KEY`. Under
+   Docker, put it in `docker/.env`. Never put it in `config.toml`. Anyone who
+   holds this key can push to the subscribed devices.
 3. In `config.toml`, set `enabled = true` and a `subject` under `[notify]`.
-4. Rebuild and restart the container. The image bakes in the code, so a plain
-   restart is not enough:
+4. Rebuild and restart the container:
    ```bash
    cd docker && docker compose up -d --build
    ```
-5. On the phone, open the app and tap **Enable reminders**.
+5. Open the app on the phone and tap **Enable reminders**.
 
 Two requirements come first:
 
-- **HTTPS is mandatory.** A browser does not register a service worker over plain
-  HTTP, and it never subscribes to push. Serve the app behind a reverse proxy
-  with a real certificate.
+- **HTTPS is mandatory.** A browser refuses to register a service worker over
+  plain HTTP, and it never subscribes to push. Serve the app behind a reverse
+  proxy with a real certificate.
 - **On Android, install the app first** (Chrome ⋮ → *Add to Home screen*). Push
   to a plain browser tab is unreliable. iOS refuses it.
 
-To prove the chain works, send a test notification to every subscribed device:
+This command sends a test notification to every subscribed device, which proves
+the whole chain works:
 
 ```bash
-curl -sX POST http://<host>:8080/api/push/test
+curl -sX POST http://<host>:<host-port>/api/push/test
 ```
 
 ### When the reminder fires
 
-The clock starts at your **last logged basal dose**. The reminder fires
-`basal_interval_hours` plus `basal_leniency_hours` after it. With the defaults,
-24 + 1, that is 25 hours later.
+The clock starts at the **last logged basal dose**. The reminder fires
+`basal_interval_hours` plus `basal_leniency_hours` after it. The defaults of 24
+and 1 put it 25 hours later.
 
-Leniency is a separate setting on purpose. Keep 24 hours as the real threshold,
-and give yourself as much grace as you want on top. Raise
-`basal_leniency_hours` to 3 to wait until 27 hours.
+Leniency is a separate setting on purpose. It keeps 24 hours as the real
+threshold and adds grace on top. A `basal_leniency_hours` of 3 waits until 27
+hours.
 
-Because the clock is tied to the dose itself, the reminder lands near the time of
-day you usually take basal. There is no quiet-hours setting to manage.
+The clock ties to the dose itself, so the reminder lands near the usual time of
+day for basal. There is no quiet-hours setting to manage.
 
-You get one notification per missed dose. After that, `repeat_hours` re-sends it
-every 30 minutes by default. Every re-send is silent, and it replaces the previous
-notification instead of stacking. So swiping the reminder away only buys you until
-the next one.
+The first notification arrives once per missed dose. After that, `repeat_hours`
+re-sends it every 30 minutes by default. Every re-send is silent and replaces the
+previous notification instead of stacking. Swiping the reminder away therefore
+buys time only until the next one.
 
-The repeat is short on purpose. A reminder is worth most in the first hour, while
-"just take the usual dose" is still the answer. Hours later the same reminder asks
-a harder question that the app must not answer for you. Set `repeat_hours = 0` to
-be told once and no more.
+The repeat window is short on purpose. A reminder is worth most in the first
+hour, while "take the usual dose" is still the answer. Hours later the same
+reminder asks a harder question, and the app must not answer that one. Set
+`repeat_hours = 0` for a single notification.
 
-The server cannot tell whether you dismissed a notification or ignored it, because
-Web Push reports nothing back. The repeat therefore runs on its own clock either
-way. Logging a basal dose is the only thing that stops it, and that also re-arms
-it for the next day.
+Web Push reports nothing back, so the server cannot tell a dismissed notification
+from an ignored one. The repeat runs on its own clock either way. Logging a basal
+dose is the only thing that stops it, and that also re-arms it for the next day.
 
-Log a basal dose and the reminder resets for the next day. If no basal dose has
-**ever** been logged, the app stays silent. A fresh install must not nag you about
-a dose it has no evidence you take.
+If no basal dose has **ever** been logged, the app stays silent. A fresh install
+must not nag about a dose it has no evidence of.
 
 A running server checks every `[notify] poll_seconds`. Set that to `0` to switch
-the check off, and run `sugardaddy notify` from cron instead. Add `--dry-run` to
-see what would be sent without sending anything.
+the built-in check off and run `sugardaddy notify` from cron instead. Add
+`--dry-run` to see what would go out without sending anything.
 
-## Common operations
+## Configuration
 
-**Change credentials** — edit `docker/.env`, then recreate the container. A
-plain `restart` keeps the old env.
-```bash
-cd docker && docker compose up -d --force-recreate
-```
-
-**Redeploy code changes:**
-```bash
-cd docker && docker compose up -d --build
-```
-
-**Watch logs, and back up the DB:**
-```bash
-docker compose logs -f
-docker compose cp sugardaddy:/data/sugardaddy.db ./backup.db
-```
-
-## Configuration reference
+One TOML file describes the whole app. Copy `config.example.toml` to
+`config.toml`. Secrets never live in this file. They come from the environment.
 
 `[librelink]`
 | key | default | meaning |
 |-----|---------|---------|
-| `region` | `AU` | pylibrelinkup region (AU, EU, US, …) |
+| `region` | `AU` | pylibrelinkup region (AU, EU, US, and others) |
 | `poll_interval_seconds` | 60 | seconds between polls for the latest reading. The minimum is 15. |
-| `patient_id` | — | set this only if the account follows more than one person |
+| `patient_id` | — | needed only when the account follows more than one person |
 
 Credentials: `SUGARDADDY_LIBRE_EMAIL` and `SUGARDADDY_LIBRE_PASSWORD`, from the
 environment only.
@@ -356,25 +337,49 @@ environment only.
 `[web]`
 | key | default | meaning |
 |-----|---------|---------|
-| `host` and `port` | `0.0.0.0` and 8080 | HTTP bind |
-| `timezone` | `Australia/Sydney` | display tz. Storage is UTC. |
+| `host` and `port` | `0.0.0.0` and 8080 | HTTP bind inside the container |
+| `timezone` | `Australia/Sydney` | display timezone. Storage is UTC. |
 | `units` | `mmol/L` | display unit, `mmol/L` or `mg/dL`. Storage is mg/dL. |
 | `target_low` and `target_high` | 3.9 and 10.0 | time-in-range band, in display units |
+
+`[insulin]`
+| key | default | meaning |
+|-----|---------|---------|
+| `dia_minutes` | 300 | duration of insulin action, for retrospective insulin-on-board context |
+| `peak_minutes` | 75 | time to peak activity for the same curve |
+| `isf` | unset | glucose drop from 1 unit. Setting it switches on the experimental bolus reference. |
+| `icr` | unset | grams of carb covered by 1 unit |
+| `target_bg` | target band midpoint | what a correction aims at |
+
+The last three are for the account holder and a clinician to decide. The app
+never infers or tunes them. It leaves the bolus reference off until `isf` exists,
+because a confident number on a shaky sensitivity factor is worse than no number.
+
+`[prescription]` (recorded fact, never a calculation input)
+| key | default | meaning |
+|-----|---------|---------|
+| `reviewed` | — | ISO date the prescription was last set. Required once anything else is set. |
+| `basal_product` and `rapid_product` | — | product names, for the report only |
+| `basal_units` | — | the prescribed basal dose |
+| `basal_timing` | — | free text, such as "evening" |
+| `icr` and `isf` | — | ratios a clinician chose, recorded next to the `[insulin]` values in use |
+
+An empty section means "not recorded". It never means "prescribed nothing".
 
 `[notify]` (the basal reminder — see [Notifications](#notifications))
 | key | default | meaning |
 |-----|---------|---------|
 | `enabled` | `false` | the on/off switch for all notifications |
 | `subject` | — | contact URL for the push service, `mailto:…` or `https://…`. Required when enabled. |
-| `poll_seconds` | 900 | seconds between checks. `0` switches the in-process check off. |
-| `ttl_seconds` | 86400 | how long a push service holds a message for a phone that is offline |
+| `poll_seconds` | 900 | seconds between checks. `0` switches the built-in check off. |
+| `ttl_seconds` | 86400 | how long a push service holds a message for an offline phone |
 | `basal_interval_hours` | 24 | the expected gap between logged basal doses |
 | `basal_leniency_hours` | 1 | extra grace before the phone says anything |
-| `repeat_hours` | 0.5 | how often to re-send a reminder that still stands. Fractions are fine, and a value below `poll_seconds` cannot be honoured. `0` = say it once. |
+| `repeat_hours` | 0.5 | how often to re-send a reminder that still stands. Fractions work. A value below `poll_seconds` cannot be honored. `0` says it once. |
 
 Signing key: `SUGARDADDY_VAPID_PRIVATE_KEY`, from the environment only.
 
-`[backfill]` (one-time HA seed only)
+`[backfill]` (the one-time Home Assistant seed only)
 | key | default | meaning |
 |-----|---------|---------|
 | `ha_url` | — | Home Assistant base URL |
@@ -382,77 +387,125 @@ Signing key: `SUGARDADDY_VAPID_PRIVATE_KEY`, from the environment only.
 
 Token: `SUGARDADDY_HA_TOKEN`, from the environment only.
 
-## Roadmap / ideas
+## Common operations
 
-None of this is built yet. It sits here so the direction stays clear. All of it
-rides on the same UTC timeline, so each item adds to the app instead of
-rewriting it.
+**Change credentials.** Edit `docker/.env`, then recreate the container. A plain
+`restart` keeps the old environment.
+```bash
+cd docker && docker compose up -d --force-recreate
+```
 
-- **Activity and wearable data (steps, heart rate, workouts).** Bring in Samsung
-  Health and Galaxy Watch metrics to give the analysis more to work with. There
-  are two feeds:
-  - *One-time history* — import a Samsung Health export through a new
-    `sugardaddy import-samsung` command. The export is a set of CSVs for daily
-    steps, heart rate, and exercise. This path suits deep retrospective history.
-    It is not something to repeat weekly.
-  - *Ongoing* — Samsung Health already syncs into Android **Health Connect**,
-    and the Home Assistant Android companion app can expose Health Connect
-    metrics as HA sensors. Sugar Daddy would then read activity from HA, the
-    same way it can seed glucose from HA. That needs no custom phone app and no
-    Samsung developer approval.
-  - Storage would be a small `activity` table for steps, heart-rate readings,
-    and workouts. It joins against glucose, meals, and insulin on the shared
-    timeline.
-- **Trend analysis and prediction.** Glucose, insulin, meals, and activity share
-  one timeline. From that, the app can learn response patterns per meal and per
-  time of day, then flag likely highs and lows. This stays decision-support for
-  review with a clinician. It is not dosing advice.
-- **Insulin-on-board and dosing awareness ("de-vibe the dose").** Calculate a
-  concrete anchor to check a dose against, right where you log the insulin, so
-  it is not decided on vibes. It ships as a glanceable, non-prescriptive nudge:
-  active IOB plus trajectory, such as "you may be more sensitive right now" or
-  "you are running high and still climbing". A fuller IOB/ISF/ICR **bolus
-  calculator** is a stretch goal, built for academic interest and as one more
-  data point to reconcile against — "it says 12 u, I feel 6 — why?" — never a
-  directive. The full write-up, the formulas, and the safety boundary are in
+**Deploy code changes.** The image bakes the code in, so this rebuilds it.
+```bash
+cd docker && docker compose up -d --build
+```
+
+**Back up the database before a deploy that changes the schema.** Schema
+migrations run at startup.
+```bash
+docker cp sugardaddy:/data/sugardaddy.db ./backup.db
+```
+
+**Watch the logs.**
+```bash
+cd docker && docker compose logs -f
+```
+
+## Repo layout
+
+```
+sugardaddy/
+  cli.py         entrypoint: serve | ingest | backfill | init-db | report | notify
+  config.py      one TOML → typed config (secrets from env, never in TOML)
+  constants.py   unit conversion, trend arrows, default target range
+  models.py      typed rows (readings, doses, notes, foods, meals, templates)
+  db.py          SQLite schema and queries (UTC epoch, dedup on timestamp)
+  source.py      GlucoseSource interface + LibreLinkUpSource (pylibrelinkup)
+  ingest.py      background poll loop (auth → latest()/graph() → store)
+  backfill.py    one-shot Home Assistant history import
+  iob.py         insulin activity curve and insulin-on-board math
+  bolus.py       the experimental bolus reference formula
+  analysis.py    pure retrospective functions (no I/O, no clock, no config)
+  report.py      the `report` command: window resolution, text and JSON output
+  notify.py      Web Push app server and the basal reminder
+  web.py         FastAPI app: phone and desktop routes, JSON API, /healthz
+  templates/     Jinja: base, phone/, desktop/, partials/
+  static/        vendored htmx and Chart.js, CSS, phone.js, desktop.js
+config.example.toml   the whole app in one file
+docker/               Dockerfile, compose file, .env.example
+deploy/               install scripts and the Claude Code review skill
+docs/plans/           design documents
+tests/                plain-assert tests, runnable with bare python
+tools/                small maintenance scripts
+```
+
+## Claude Code review skill (optional)
+
+`deploy/skills/sugardaddy-review/` is a Claude Code skill. It fetches the live
+database from the serve host, runs `report --json`, and writes a review aimed at
+management of the condition. The review compares against the previous run and
+keeps a local history, so trends stay visible. The skill does the fetch and the
+interpretation. `sugardaddy report` still does the math.
+
+Install it on any machine:
+
+```bash
+bash deploy/install-skill.sh
+```
+
+The script copies the skill into `~/.claude/skills/sugardaddy-review/`. It also
+seeds a machine-local `connection.env`. Edit that file and point it at the serve
+host:
+
+```bash
+$EDITOR ~/.claude/skills/sugardaddy-review/connection.env   # set SD_REVIEW_HOST
+```
+
+`connection.env` holds host names and paths. The review `history/` holds glucose
+data. Both stay on one machine, so neither belongs in the repo. The repo tracks
+`connection.env.example` alone. In Claude Code, ask for a review of the sugardaddy
+data, or run `/sugardaddy-review`.
+
+## Roadmap
+
+None of this exists yet. It sits here so the direction stays clear. Every item
+rides on the same UTC timeline, so each one adds to the app instead of rewriting
+it.
+
+- **Activity and wearable data** (steps, heart rate, workouts). Two feeds are
+  possible. A one-time import of a Samsung Health export covers deep history. An
+  ongoing feed can come through Android **Health Connect** and the Home Assistant
+  companion app, which needs no custom phone app. Storage would be a small
+  `activity` table that joins the shared timeline.
+- **Trend analysis and prediction.** Glucose, insulin, meals, notes, and activity
+  share one timeline. The app could learn response patterns per meal and per time
+  of day, then flag likely highs and lows. This stays material for review with a
+  clinician.
+- **More dosing awareness.** The experimental bolus reference is the first step.
+  The direction, the formulas, and the safety boundary are in
   [`docs/plans/insulin-awareness.md`](docs/plans/insulin-awareness.md).
-- **Nice-to-haves.** Alerts on sustained highs and lows. Optional auth, if the
-  app ever goes beyond a trusted LAN or VPN. Photo attachments on meals. CSV
+- **Smaller ideas.** Alerts on sustained highs and lows. Optional authentication,
+  if the app ever leaves a trusted network. Photo attachments on meals. CSV
   export of the combined timeline.
 
-Live wearable data depends on the Health Connect to HA feed above. The manual
-export only makes sense as a one-off seed.
+## Known limitations
 
-## Notes and limitations
-
-- **The notification badge** (`sugardaddy/static/icons/icon-badge-96.png`) is the
-  small icon Android draws in the status bar. Android keeps only the alpha
-  channel and paints the result white, so this file is the bare droplet on
-  transparency. A full-colour icon there shows as a plain white square. Rebuild it
-  from the app icon with `python tools/make_badge_icon.py` (needs
-  `pip install pillow`).
-
-- **LibreLinkUp is unofficial and reverse-engineered.** Abbott occasionally
-  bumps a required app-version header, which pauses ingestion until a new
-  `pylibrelinkup` ships. Manual meal and dose logging keeps working. Pin the
-  dependency, and update it when this happens.
-- Glucose granularity is whatever LibreLinkUp reports, and in practice that is
-  one reading a minute, in whole mg/dL — measured, not assumed. Backfilled
-  history from Home Assistant is coarser, about every five minutes. Anything
-  deciding whether a stretch of data is complete must therefore measure covered
-  *time*, not count rows, or it will call a backfilled day two thirds empty. This
-  is still not real-time data.
-- **The trace carries a wobble of about ±0.8 mmol/L that is not your blood
-  sugar.** Measured over 9 days of this database: 191 transient excursions, a
-  median amplitude of 14 mg/dL, and peaks and dips balanced 96 to 95. Of
-  excursions within 30 minutes of each other, 84 alternate direction and only 4
-  repeat, so a peak nearly always pulls a dip after it. The amplitude does not
-  scale with the glucose level (r = +0.16), which rules out simple proportional
-  measurement error. The pattern is consistent with the sensor's lag-compensating
-  filter ringing, plus local perfusion and pressure changes at the sensor site —
-  real enough, but local to one patch of skin rather than systemic. Treat single
-  points accordingly, prefer the aggregates, and turn on the smoothed series to
-  read the trend.
-- Long-term history accumulates from the first run, plus the optional HA seed.
-  The live API exposes about 12h through `graph` and 14 days through `logbook`.
-```
+- **LibreLinkUp is unofficial and reverse-engineered.** Abbott sometimes changes
+  a required app-version header. Ingestion pauses until a new `pylibrelinkup`
+  ships. Manual logging of meals and doses keeps working. Pin the dependency and
+  update it when this happens.
+- **The trace carries a wobble of about ±0.8 mmol/L that is not blood sugar.**
+  Short excursions alternate up and down on a cycle of 25 to 35 minutes. The
+  pattern matches the sensor's lag-compensating filter, plus local blood flow and
+  pressure at the sensor site. It is real, but local to one patch of skin. Read
+  the aggregates and the smoothed line rather than single points.
+- **This is not real-time data.** Readings arrive about once a minute from
+  LibreLinkUp, in whole mg/dL. History imported from Home Assistant is coarser,
+  at about one reading every five minutes.
+- **Carb figures are estimates.** They are as good as the food library and the
+  plates behind them, and many meals carry no carb count at all. `report` states
+  the coverage for this reason.
+- **History starts at the first run**, plus the optional Home Assistant seed. The
+  LibreLinkUp API exposes about 12 hours through `graph` and 14 days through
+  `logbook`.
+- **The app has no authentication.** It expects a trusted LAN or VPN.
