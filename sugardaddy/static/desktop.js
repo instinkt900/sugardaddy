@@ -230,6 +230,29 @@
     };
   }
 
+  // Legend order, stated outright rather than fallen out of dataset order or the
+  // `order` values (which exist for draw stacking and shouldn't have to serve two
+  // masters). Lines first, then markers: the continuous series are what you read
+  // the chart *along*, the markers are events dropped onto it, and grouping them
+  // that way means the legend stops interleaving the two kinds.
+  const LEGEND_ORDER = [
+    "Glucose (smoothed)",
+    "Sensor readings",
+    "Insulin active (u)",
+    "Insulin activity (u/hr)",
+    "Insulin",
+    "Meal",
+    "Note",
+  ];
+  // Anything unlisted sorts to the end rather than to the front, so adding a
+  // dataset and forgetting this list degrades to "appended" instead of "hijacks
+  // the first slot".
+  const legendRank = (item) => {
+    const i = LEGEND_ORDER.indexOf(item.text);
+    return i === -1 ? LEGEND_ORDER.length : i;
+  };
+  const legendOrder = (a, b) => legendRank(a) - legendRank(b);
+
   function renderChart(data) {
     const ctx = document.getElementById("main-chart");
     if (typeof Chart === "undefined") return;
@@ -270,10 +293,8 @@
           { type: "line", label: "Glucose (smoothed)", data: s.smoothed,
             borderColor: "#4f8cff", borderWidth: 2,
             pointRadius: 0, tension: 0.3, fill: false, parsing: false, order: 0 },
-          // order:1 alongside the raw readings, not for the drawing (these markers
-          // sit at the foot of the chart and overlap nothing) but for the legend,
-          // which Chart.js sorts by order — at 0 they wedged themselves between
-          // the two glucose series.
+          // order:1 alongside the raw readings — draw stacking only. Where these
+          // land in the legend is LEGEND_ORDER's business now, not `order`'s.
           { type: "scatter", label: "Insulin", data: s.doses,
             borderColor: (c) => SD.doseColor(c.raw && c.raw.kind),
             backgroundColor: (c) => SD.doseColor(c.raw && c.raw.kind),
@@ -310,7 +331,7 @@
         animation: false,
         interaction: { mode: "nearest", intersect: true },
         plugins: {
-          legend: { labels: { color: "#e8eaf0" } },
+          legend: { labels: { color: "#e8eaf0", sort: legendOrder } },
           tooltip: { callbacks: {
             // On a linear axis Chart.js titles the tooltip with the raw x value,
             // so hovering a line read "1,785,182,204,000"; the dose/meal scatters
