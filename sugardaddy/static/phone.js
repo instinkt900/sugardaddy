@@ -138,13 +138,13 @@
       .then((r) => r.json())
       .then((data) => {
         const g = data.glucose.map((p) => ({ x: p.t, y: p.v }));
-        // Sit the dose/meal markers along the low end of the glucose range.
+        // Sit the dose/meal markers in a row along the foot of the chart.
         const ys = g.map((p) => p.y);
-        const yMin = ys.length ? Math.min(...ys) : 0;
-        const yMax = ys.length ? Math.max(...ys) : 10;
-        const doses = data.doses.map((d) => ({ x: d.t, y: yMin, kind: d.kind, label: `${d.units}u ${d.kind}` }));
+        const yMax = ys.length ? Math.max(...ys) : 0;
+        const row = SD.markerRow(data.units, yMax);
+        const doses = data.doses.map((d) => ({ x: d.t, y: row.dose, kind: d.kind, label: `${d.units}u ${d.kind}` }));
         const meals = data.meals.map((m) => ({
-          x: m.t, y: yMin + (yMax - yMin) * 0.06,
+          x: m.t, y: row.meal,
           label: m.label + (m.total_carbs != null ? ` (${m.total_carbs}g)` : ""),
         }));
         if (miniChart) {
@@ -184,7 +184,8 @@
               // exists to make obvious, and a floating baseline changes how far
               // down "3.2" looks from one refresh to the next. Same fixed
               // reference point every time — see desktop.js.
-              y: { min: 0, ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
+              y: { min: 0, suggestedMax: SD.chartTop(data.units),
+                   ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
                    title: { display: true, text: data.units, color: "#8b90a0" } },
             },
           },

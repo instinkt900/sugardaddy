@@ -204,16 +204,13 @@
     return t.length > max ? t.slice(0, max - 1) + "…" : t;
   }
 
-  // Dose/meal/note markers sit just above the bottom of the glucose range, so
-  // their y positions move with the data and have to be recomputed each refresh.
+  // Dose/meal/note markers sit in a row along the foot of the chart. Only a
+  // reading above the fixed top moves them, so they hold still across refreshes.
   function chartSeries(data) {
     const glucose = data.glucose.map((p) => ({ x: p.t, y: p.v }));
     const ys = glucose.map((p) => p.y);
-    const yMin = ys.length ? Math.min(...ys) : 0;
-    const yMax = ys.length ? Math.max(...ys) : 10;
-    const doseY = yMin;
-    const mealY = yMin + (yMax - yMin) * 0.06;
-    const noteY = yMin + (yMax - yMin) * 0.12;
+    const yMax = ys.length ? Math.max(...ys) : 0;
+    const { dose: doseY, meal: mealY, note: noteY } = SD.markerRow(data.units, yMax);
     return {
       glucose,
       smoothed: (data.smoothed || []).map((p) => ({ x: p.t, y: p.v })),
@@ -373,7 +370,8 @@
           // same 3.2 reading can look alarming on one day's chart and ordinary
           // on another. A fixed floor makes the height of the trace comparable
           // across every window you load.
-          y: { position: "right", min: 0, ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
+          y: { position: "right", min: 0, suggestedMax: SD.chartTop(data.units),
+               ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
                title: { display: true, text: data.units, color: "#8b90a0" } },
           y1: { position: "left", beginAtZero: true, ticks: { color: "#8b90a0" },
                 grid: { display: false },

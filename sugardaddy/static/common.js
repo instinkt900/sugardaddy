@@ -134,6 +134,33 @@ window.SD = {
          : kind === "basal" ? "#7c6cf0"       // indigo, deeper
          : "#4f8cff";                         // bolus (and any unset kind)
   },
+  // The y-axis both charts open at: 0 to 13 mmol/L, growing past the top only
+  // when a reading needs the room. Paired with the hard `min: 0`, it fixes the
+  // whole scale on an ordinary day rather than just the floor — a 9.5 peak sits
+  // at the same height on Monday as on Tuesday, and the shaded target band is
+  // always the same slab of the chart. 13 clears the 10.0 top of the default
+  // band with enough headroom that a routine post-meal rise doesn't rescale
+  // everything underneath it.
+  //
+  // Expressed in mmol/L and converted, because the axis carries whatever
+  // `units` the payload came in as — a bare 13 would be an absurd ceiling for a
+  // mg/dL display (see constants.MGDL_PER_MMOL).
+  chartTop(units) {
+    return units === "mmol/L" ? 13 : Math.round(13 * 18.0182);
+  },
+  // Where the dose / meal / note markers sit: a row along the foot of the chart,
+  // spaced as a fraction of the axis rather than of the data.
+  //
+  // They used to hang off the glucose minimum, which worked only because the
+  // axis floated down to meet the data — "lowest reading" and "bottom of the
+  // chart" were the same place. Pinning the floor at 0 broke that equivalence
+  // and left the markers stranded mid-trace, inside the target band. Measuring
+  // from the axis instead puts them back under the data, and keeps them at a
+  // fixed height between refreshes now that the axis itself is fixed.
+  markerRow(units, dataMax) {
+    const top = Math.max(this.chartTop(units), dataMax || 0);
+    return { dose: top * 0.04, meal: top * 0.10, note: top * 0.16 };
+  },
   // Chart.js plugin: shade the in-range target band behind the series.
   targetBand(low, high) {
     return {
