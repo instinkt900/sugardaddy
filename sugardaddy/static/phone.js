@@ -180,8 +180,12 @@
               x: { type: "linear", min: data.from, max: data.to,
                    ticks: { color: "#8b90a0", maxTicksLimit: 6,
                      callback: (v) => SD.hhmm(v) }, grid: { display: false } },
-              y: { ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
-                   suggestedMin: 0, title: { display: true, text: data.units, color: "#8b90a0" } },
+              // Hard zero base, not suggestedMin: a low is the thing this chart
+              // exists to make obvious, and a floating baseline changes how far
+              // down "3.2" looks from one refresh to the next. Same fixed
+              // reference point every time — see desktop.js.
+              y: { min: 0, ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
+                   title: { display: true, text: data.units, color: "#8b90a0" } },
             },
           },
           plugins: [SD.targetBand(data.target_low, data.target_high)],

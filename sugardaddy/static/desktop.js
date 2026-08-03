@@ -347,7 +347,12 @@
           // point; putting its scale on the far side of the chart from where the
           // eye already is invites reading the value against the insulin axis.
           // The scale that matters most sits next to the value that matters most.
-          y: { position: "right", ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
+          // Based at zero, always. Autoscaling the bottom means the vertical
+          // distance to a low depends on whatever else is in the window, so the
+          // same 3.2 reading can look alarming on one day's chart and ordinary
+          // on another. A fixed floor makes the height of the trace comparable
+          // across every window you load.
+          y: { position: "right", min: 0, ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
                title: { display: true, text: data.units, color: "#8b90a0" } },
           y1: { position: "left", beginAtZero: true, ticks: { color: "#8b90a0" },
                 grid: { display: false },
