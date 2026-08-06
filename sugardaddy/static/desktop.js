@@ -108,6 +108,22 @@
     },
   };
 
+  // ---- persisted view settings ----
+  // Which window you are looking at and which series you have switched off are
+  // *view* state, not data — but they were re-chosen on every reload, so coming
+  // back to the dashboard meant rebuilding the same view by hand each time.
+  // localStorage rather than a cookie: it never rides along on a request, and
+  // this is per-device state by nature (the big screen and the tablet want
+  // different answers). Losing it costs nothing, so every read and write is
+  // best-effort — storage can be disabled or full, and neither is worth an error.
+  const PREFS_KEY = "sd.desktop.view";
+  let prefs = {};
+  try { prefs = JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (e) { prefs = {}; }
+  function savePrefs(patch) {
+    prefs = { ...prefs, ...patch };
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) { /* not worth it */ }
+  }
+
   // ---- range ----
   function nowInput(offsetHours = 0) {
     const d = new Date(Date.now() - offsetHours * 3600e3);
@@ -146,17 +162,32 @@
     return document.querySelector(".range-picker .range-presets button.active");
   }
 
+  // Point the window at the last N hours. Shared by the click handlers and the
+  // restore-on-load path so a remembered preset lands in exactly the state
+  // clicking it would have.
+  function selectPreset(btn) {
+    setPreset(btn);
+    fromEl.value = nowInput(parseInt(btn.dataset.hours, 10));
+    toEl.value = nowInput(0);
+  }
+
   document.querySelectorAll(".range-picker .range-presets button").forEach((b) => {
     b.addEventListener("click", () => {
-      setPreset(b);
-      fromEl.value = nowInput(parseInt(b.dataset.hours, 10));
-      toEl.value = nowInput(0);
+      selectPreset(b);
+      // Remember the preset, not the window it produced: it means "the last 12
+      // hours", which is a different span tomorrow.
+      savePrefs({ preset: parseInt(b.dataset.hours, 10), from: null, to: null });
       load();
     });
   });
   // Typing a range detaches from the presets. Without this the last-clicked
   // preset stayed active and autoRefresh() wrote the window straight back.
-  const manualRange = () => { setPreset(null); load(); };
+  const manualRange = () => {
+    setPreset(null);
+    // A hand-typed window is a fixed pair of instants, so it is stored as one.
+    savePrefs({ preset: null, from: fromEl.value, to: toEl.value });
+    load();
+  };
   fromEl.addEventListener("change", manualRange);
   toEl.addEventListener("change", manualRange);
 
@@ -250,6 +281,20 @@
   };
   const legendOrder = (a, b) => legendRank(a) - legendRank(b);
 
+  // Which series are switched off, keyed by legend label. By label and not by
+  // index on purpose: an index would quietly re-map onto a different series the
+  // next time a dataset is added or reordered, so yesterday's hidden IOB curve
+  // would come back as a hidden glucose line. An unrecognised label is simply
+  // ignored, which is also what makes renaming a dataset safe.
+  function saveHidden() {
+    if (!chart) return;
+    savePrefs({
+      hidden: chart.data.datasets
+        .filter((ds, i) => !chart.isDatasetVisible(i))
+        .map((ds) => ds.label),
+    });
+  }
+
   function renderChart(data) {
     const ctx = document.getElementById("main-chart");
     if (typeof Chart === "undefined") return;
@@ -270,7 +315,7 @@
       return;
     }
 
-    chart = new Chart(ctx, {
+    const config = {
       data: {
         datasets: [
           // The raw readings, kept but pushed back: thin, grey and translucent.
@@ -328,7 +373,16 @@
         animation: false,
         interaction: { mode: "nearest", intersect: true },
         plugins: {
-          legend: { labels: { color: "#e8eaf0", sort: legendOrder } },
+          legend: {
+            labels: { color: "#e8eaf0", sort: legendOrder },
+            // Keep Chart.js's own show/hide behaviour and record the result —
+            // wrapping the default rather than reimplementing it means the
+            // toggle keeps working if the library's version of it changes.
+            onClick(e, item, legend) {
+              Chart.defaults.plugins.legend.onClick.call(this, e, item, legend);
+              saveHidden();
+            },
+          },
           tooltip: { callbacks: {
             // On a linear axis Chart.js titles the tooltip with the raw x value,
             // so hovering a line read "1,785,182,204,000"; the dose/meal scatters
@@ -381,7 +435,17 @@
         },
       },
       plugins: [SD.targetBand(data.target_low, data.target_high), lastValueTag, crosshair],
-    });
+    };
+
+    // Restore the series that were switched off. Set on the dataset before
+    // construction rather than toggled afterwards, so a hidden series is never
+    // painted once and then pulled away on first render.
+    // Array-checked, not just defaulted: `new Set` throws on a non-iterable, and
+    // an exception here would take the whole chart down over a stale preference.
+    const off = new Set(Array.isArray(prefs.hidden) ? prefs.hidden : []);
+    config.data.datasets.forEach((ds) => { if (off.has(ds.label)) ds.hidden = true; });
+
+    chart = new Chart(ctx, config);
   }
 
   // ---- stats ----
@@ -454,7 +518,10 @@
       .catch(() => {});
   }
 
-  function setDailyDays(n) {
+  // `reload` is false only on the restore-at-startup path: load() fetches the
+  // rollup on its own a moment later, and firing both raced two responses into
+  // the same table for no gain.
+  function setDailyDays(n, reload = true) {
     // Clamped to the same bounds the endpoint enforces, and written back to the
     // field: typing 999 and getting 365 days of rows while the box still reads 999
     // is the kind of small lie that makes you distrust the whole table.
@@ -467,7 +534,8 @@
     );
     const input = document.getElementById("daily-days");
     if (input) input.value = dailyDays;
-    loadDaily();
+    savePrefs({ days: dailyDays });
+    if (reload) loadDaily();
   }
 
   document.querySelectorAll(".day-presets button").forEach((b) => {
@@ -1006,9 +1074,25 @@
   }
 
   // ---- init ----
-  fromEl.value = nowInput(24);
-  toEl.value = nowInput(0);
-  setPreset(document.querySelector('.range-picker .range-presets button[data-hours="24"]'));
+  // Restore the last window. A preset is re-anchored to *now* — a remembered
+  // "12h" means the last twelve hours today, not the twelve that ended when the
+  // tab was closed — while a hand-typed range comes back verbatim and stays
+  // frozen, which is the whole point of having typed it. parseInt before the
+  // selector so a corrupt stored value can't reach querySelector and throw.
+  const savedHours = parseInt(prefs.preset, 10);
+  const savedPreset = Number.isFinite(savedHours)
+    ? document.querySelector(`.range-picker .range-presets button[data-hours="${savedHours}"]`)
+    : null;
+  if (savedPreset) {
+    selectPreset(savedPreset);
+  } else if (typeof prefs.from === "string" && typeof prefs.to === "string" && prefs.from && prefs.to) {
+    fromEl.value = prefs.from;
+    toEl.value = prefs.to;
+    setPreset(null);
+  } else {
+    selectPreset(document.querySelector('.range-picker .range-presets button[data-hours="24"]'));
+  }
+  if (prefs.days) setDailyDays(prefs.days, false);
   window.addEventListener("load", load);
   setInterval(autoRefresh, REFRESH_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) autoRefresh(); });
