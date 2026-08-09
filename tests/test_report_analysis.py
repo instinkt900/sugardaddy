@@ -445,6 +445,125 @@ def test_notes_share_the_day_key_with_the_glucose_breakdown():
     assert analysis.notes_by_day([Note(ts_utc=ts, text="woke up rough")], syd)[0]["day"] == day
 
 
+def test_clock_span_wraps_midnight():
+    # 23:40 and 00:10 are half an hour apart. A plain min/max would call that a
+    # 23.5-hour spread and put the middle of the habit at noon.
+    span = analysis._clock_span([23 * 60 + 40, 10])
+    assert span["spread_min"] == 30, span
+    assert (span["earliest"], span["latest"]) == ("23:40", "00:10"), span
+    # A single dose has no spread at all, and neither do identical ones.
+    assert analysis._clock_span([22 * 60])["spread_min"] == 0
+    assert analysis._clock_span([22 * 60] * 3)["spread_min"] == 0
+    assert analysis._clock_span([])["median"] is None
+
+
+def test_insulin_timing_separates_kinds():
+    doses = [
+        InsulinDose(ts_utc=T0 + 22 * 3600, units=36.0, kind="basal"),
+        InsulinDose(ts_utc=T0 + 46 * 3600, units=36.0, kind="basal"),  # 22:00 next day
+        InsulinDose(ts_utc=T0 + 12 * 3600, units=6.0, kind="bolus"),
+        InsulinDose(ts_utc=T0 + 15 * 3600, units=2.0, kind="correction"),
+    ]
+    out = analysis.insulin_timing(doses, timezone.utc)["by_kind"]
+    assert out["basal"]["count"] == 2 and out["basal"]["total_units"] == 72.0
+    assert out["basal"]["clock"]["median"] == "22:00", out["basal"]
+    assert out["basal"]["clock"]["spread_min"] == 0  # same time both days
+    assert out["basal"]["by_band"] == {"night": 2}, out["basal"]
+    assert out["bolus"]["units"]["max"] == 6.0
+    assert out["correction"]["by_band"] == {"midday": 1}, out["correction"]
+    assert analysis.insulin_timing([], timezone.utc) == {"by_kind": {}}
+
+
+def test_meal_timing_gaps_split_day_from_night():
+    meals = [
+        Meal(ts_utc=T0 + 8 * 3600, meal_type="breakfast"),
+        Meal(ts_utc=T0 + 10 * 3600, meal_type="snack"),
+        Meal(ts_utc=T0 + 19 * 3600, meal_type="dinner"),
+        Meal(ts_utc=T0 + 32 * 3600, meal_type="breakfast"),  # 08:00 the next day
+    ]
+    mt = analysis.meal_timing(meals, timezone.utc)
+    assert mt["days_with_meals"] == 2 and mt["per_day"]["max"] == 3.0
+    # Within-day gaps are 2 h and 9 h; the 13-hour night is NOT one of them, or
+    # it would drag the median that shows how close together plates sit.
+    assert mt["intervals_hours"]["median"] == 5.5, mt["intervals_hours"]
+    assert mt["overnight_fast_hours"]["median"] == 13.0, mt["overnight_fast_hours"]
+    assert mt["by_type"]["breakfast"]["count"] == 2
+    assert mt["by_band"] == {"morning": 3, "evening": 1}, mt["by_band"]
+
+
+def test_meal_timing_ignores_a_gap_over_a_missing_day():
+    # Two meals three days apart is a hole in the record, not a 72-hour fast.
+    meals = [Meal(ts_utc=T0 + 8 * 3600), Meal(ts_utc=T0 + 80 * 3600)]
+    assert analysis.meal_timing(meals, timezone.utc)["overnight_fast_hours"]["median"] is None
+
+
+def test_bolus_lag_is_signed_against_the_plate():
+    readings = [r(i * 300, 8.0) for i in range(0, 40)]
+    meal = Meal(ts_utc=T0 + 3600, name="dinner")
+    early = analysis.post_meal_responses(
+        readings, [meal], UNITS, [InsulinDose(ts_utc=T0 + 3600 - 900, units=5.0)]
+    )[0]
+    late = analysis.post_meal_responses(
+        readings, [meal], UNITS, [InsulinDose(ts_utc=T0 + 3600 + 1800, units=5.0)]
+    )[0]
+    assert early["bolus_lag_min"] == -15, early  # pre-bolus reads negative
+    assert late["bolus_lag_min"] == 30, late
+    # Beyond the pairing window there is no dose to pair with — a real category.
+    far = analysis.post_meal_responses(
+        readings, [meal], UNITS, [InsulinDose(ts_utc=T0 + 3600 + 4000, units=5.0)]
+    )[0]
+    assert far["bolus_lag_min"] is None, far
+    assert analysis._bolus_timing_band(None) == "no rapid dose"
+
+
+def test_meal_response_groups_pool_by_food():
+    # Toast twice with a big rise, oats once with none. Only the repeated food is
+    # pooled; the one-off stays a single meal row for the reader to see.
+    responses = [
+        {
+            "ts_utc": T0 + 8 * 3600,
+            "meal_type": "breakfast",
+            "items": [{"name": "Toast", "count": 2, "carbs_g": 30.0}],
+            "carbs_g": 60.0,
+            "peak_delta_display": 4.0,
+            "peak_display": 12.0,
+            "minutes_to_peak": 60,
+            "bolus_units": 4.0,
+            "bolus_lag_min": -10,
+        },
+        {
+            "ts_utc": T0 + 32 * 3600,
+            "meal_type": "breakfast",
+            "items": [{"name": "toast ", "count": 2, "carbs_g": 30.0}],
+            "carbs_g": 60.0,
+            "peak_delta_display": 6.0,
+            "peak_display": 14.0,
+            "minutes_to_peak": 90,
+            "bolus_units": 4.0,
+            "bolus_lag_min": 20,
+        },
+        {
+            "ts_utc": T0 + 56 * 3600,
+            "meal_type": "breakfast",
+            "items": [{"name": "oats", "count": 1, "carbs_g": 40.0}],
+            "carbs_g": 40.0,
+            "peak_delta_display": 1.0,
+            "peak_display": 9.0,
+            "minutes_to_peak": 45,
+            "bolus_units": 4.0,
+            "bolus_lag_min": None,
+        },
+    ]
+    g = analysis.meal_response_groups(responses, timezone.utc)
+    assert [f["food"] for f in g["by_food"]] == ["Toast"], g["by_food"]  # case/space folded
+    assert g["by_food"][0]["n"] == 2 and g["by_food"][0]["mean_peak_delta"] == 5.0
+    assert g["foods_below_threshold"] == 1
+    assert g["by_meal_type"][0]["meal_type"] == "breakfast" and g["by_meal_type"][0]["n"] == 3
+    timings = {t["timing"]: t["n"] for t in g["by_bolus_timing"]}
+    assert timings == {"pre-bolus": 1, "after eating": 1, "no rapid dose": 1}, timings
+    assert analysis.meal_response_groups([], timezone.utc)["by_food"] == []
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for fn in fns:

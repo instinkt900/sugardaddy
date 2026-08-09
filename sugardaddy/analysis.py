@@ -26,6 +26,22 @@ from sugardaddy.models import GlucoseReading, InsulinDose, Meal, Note
 _MEAL_MATCH_WINDOW = 20 * 60
 _POST_MEAL_WINDOW = 2 * 60 * 60
 
+# Wider than the co-timing window above, and for a different question. That one
+# asks "which dose covered this plate" and must not claim a dose that belongs to
+# something else. This one asks "how did the two land relative to each other",
+# where a dose 30 minutes after the first bite is exactly the habit worth seeing
+# rather than a pairing to discard.
+_BOLUS_PAIR_WINDOW = 45 * 60
+
+# Named parts of the day, used wherever meals or doses are grouped by when they
+# happen. Half-open [start, end) on the local hour; "night" wraps midnight.
+_DAY_BANDS = (
+    ("morning", 5, 11),
+    ("midday", 11, 16),
+    ("evening", 16, 21),
+    ("night", 21, 5),
+)
+
 # Two sub-range readings are part of the same episode if no more than this many
 # seconds apart — bridges the odd dropped CGM sample without merging separate dips.
 _EPISODE_GAP = 20 * 60
@@ -137,11 +153,28 @@ def post_meal_responses(
         iob_start = active_iob(
             prior, meal.ts_utc, dia_minutes=dia_minutes, peak_minutes=peak_minutes
         )
+        # Nearest rapid dose on a wider window than the co-timing one, signed:
+        # negative = insulin before the plate (a pre-bolus), positive = chasing it
+        # afterwards. None means nothing rapid landed anywhere near the meal.
+        near = [d for d in doses if is_rapid(d) and abs(d.ts_utc - meal.ts_utc) <= _BOLUS_PAIR_WINDOW]
+        lag_min = (
+            round((min(near, key=lambda d: abs(d.ts_utc - meal.ts_utc)).ts_utc - meal.ts_utc) / 60)
+            if near
+            else None
+        )
         row = {
             "meal_id": meal.id,
             "ts_utc": meal.ts_utc,
             "description": meal.label,
+            "meal_type": meal.meal_type or "",
+            # The plate itself, not just its label — so a response can be read
+            # against what was actually on it and foods can be grouped across meals.
+            "items": [
+                {"name": i.name, "count": i.count, "carbs_g": i.carbs_g} for i in meal.items
+            ],
             "carbs_g": meal.total_carbs,
+            "carbs_complete": meal.carbs_complete,
+            "bolus_lag_min": lag_min,
             "start_display": to_display(start.value_mgdl, units),
             "peak_display": to_display(peak.value_mgdl, units),
             "peak_delta_display": _delta_display(peak.value_mgdl - start.value_mgdl, units),
@@ -699,6 +732,253 @@ def carb_coverage(meals: list[Meal]) -> dict:
         "with_carbs": with_carbs,
         "partial": partial,
         "percent": round(100 * with_carbs / total, 1) if total else 0.0,
+    }
+
+
+def _clock(minute_of_day: float) -> str:
+    m = int(round(minute_of_day)) % 1440
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def _band(hour: int) -> str:
+    for name, start, end in _DAY_BANDS:
+        if start <= end:
+            if start <= hour < end:
+                return name
+        elif hour >= start or hour < end:  # the band that wraps midnight
+            return name
+    return "night"
+
+
+def _clock_span(minutes: list[int]) -> dict:
+    """Where a set of clock times sits, as the tightest window that holds them.
+
+    Clock times are circular: 23:40 and 00:10 are half an hour apart, but a plain
+    min/max calls that a 23½-hour spread and an average puts it at noon. So the
+    window is found by rotating to the *largest empty gap* — the times either side
+    of that gap are the ends of the habit, and the spread is what is left.
+    """
+    if not minutes:
+        return {"median": None, "earliest": None, "latest": None, "spread_min": None}
+    xs = sorted(minutes)
+    n = len(xs)
+    gaps = [(xs[(i + 1) % n] - xs[i]) % 1440 for i in range(n)]
+    g = max(range(n), key=lambda i: gaps[i])  # the hole nobody doses/eats in
+    start, end = xs[(g + 1) % n], xs[g]
+
+    # Walk the times in window order, unrolling past midnight so the median is
+    # taken on a straight line rather than a wrapped one.
+    unrolled, base, prev = [], 0, None
+    for i in range(n):
+        v = xs[(g + 1 + i) % n]
+        if prev is not None and v < prev:
+            base += 1440
+        unrolled.append(v + base)
+        prev = v
+    return {
+        "median": _clock(statistics.median(unrolled)),
+        "earliest": _clock(start),
+        "latest": _clock(end),
+        "spread_min": (end - start) % 1440,
+    }
+
+
+def _sizes(values: list[float]) -> dict:
+    """Mean/median/min/max of a set of doses or amounts, or nulls if empty."""
+    if not values:
+        return {"mean": None, "median": None, "min": None, "max": None}
+    return {
+        "mean": round(statistics.fmean(values), 1),
+        "median": round(statistics.median(values), 1),
+        "min": round(min(values), 1),
+        "max": round(max(values), 1),
+    }
+
+
+def insulin_timing(doses: list[InsulinDose], tz: tzinfo) -> dict:
+    """When doses land and how big they are, per kind — insulin as a habit.
+
+    ``insulin_summary`` answers how much and how often; this answers *when*, which
+    a total cannot show. A basal always at 22:00 and one scattered over six hours
+    produce the same weekly units and are not the same behaviour, and a correction
+    habit that clusters in one part of the day says where the day goes wrong.
+
+    Nothing here judges a dose. It reports the pattern of the ones that were given.
+    """
+    by_kind: dict[str, dict] = {}
+    for d in sorted(doses, key=lambda d: d.ts_utc):
+        local = datetime.fromtimestamp(d.ts_utc, tz)
+        k = by_kind.setdefault(
+            d.kind or "bolus",
+            {"count": 0, "total_units": 0.0, "_units": [], "_minutes": [], "by_band": {}},
+        )
+        k["count"] += 1
+        k["total_units"] += d.units
+        k["_units"].append(d.units)
+        k["_minutes"].append(local.hour * 60 + local.minute)
+        band = _band(local.hour)
+        k["by_band"][band] = k["by_band"].get(band, 0) + 1
+
+    for k in by_kind.values():
+        k["total_units"] = round(k["total_units"], 1)
+        k["units"] = _sizes(k.pop("_units"))
+        k["clock"] = _clock_span(k.pop("_minutes"))
+    return {"by_kind": by_kind}
+
+
+def meal_timing(meals: list[Meal], tz: tzinfo) -> dict:
+    """The shape of the eating day: how many plates, at what times, how far apart.
+
+    Grazing and three square meals can log the same carbs, and the difference is
+    only visible in the timestamps. ``intervals_hours`` counts the gaps *within* a
+    local day (short ones are snacking on top of meals); ``overnight_fast_hours``
+    is the gap from a day's last plate to the next day's first, which is the one
+    long window the glucose trace gets to settle in.
+
+    Meal type is whatever the user tagged; untagged plates are grouped under
+    ``unspecified`` rather than guessed at from the clock.
+    """
+    ordered = sorted(meals, key=lambda m: m.ts_utc)
+    by_type: dict[str, dict] = {}
+    by_band: dict[str, int] = {}
+    by_day: dict[str, list[Meal]] = {}
+
+    for m in ordered:
+        local = datetime.fromtimestamp(m.ts_utc, tz)
+        t = by_type.setdefault(
+            m.meal_type or "unspecified", {"count": 0, "_minutes": [], "_carbs": []}
+        )
+        t["count"] += 1
+        t["_minutes"].append(local.hour * 60 + local.minute)
+        if m.total_carbs is not None:
+            t["_carbs"].append(m.total_carbs)
+        band = _band(local.hour)
+        by_band[band] = by_band.get(band, 0) + 1
+        by_day.setdefault(local.strftime("%Y-%m-%d"), []).append(m)
+
+    for t in by_type.values():
+        t["clock"] = _clock_span(t.pop("_minutes"))
+        carbs = t.pop("_carbs")
+        t["carbs_g"] = _sizes(carbs)
+        t["with_carbs"] = len(carbs)
+
+    # Gaps between plates inside one local day, and the overnight break between
+    # days. Split because they answer different questions and a single list of
+    # "gaps" would let a 12-hour night dominate the median of the snacking ones.
+    intervals: list[float] = []
+    for day in sorted(by_day):
+        rows = by_day[day]
+        intervals += [
+            (b.ts_utc - a.ts_utc) / 3600 for a, b in zip(rows, rows[1:]) if b.ts_utc > a.ts_utc
+        ]
+    fasts: list[float] = []
+    days = sorted(by_day)
+    for prev_day, next_day in zip(days, days[1:]):
+        # Only across consecutive calendar days: a gap over a day with no meals
+        # logged is a hole in the record, not a 36-hour fast.
+        if (
+            datetime.strptime(next_day, "%Y-%m-%d") - datetime.strptime(prev_day, "%Y-%m-%d")
+        ).days != 1:
+            continue
+        fasts.append((by_day[next_day][0].ts_utc - by_day[prev_day][-1].ts_utc) / 3600)
+
+    counts = [len(v) for v in by_day.values()]
+    return {
+        "meal_count": len(ordered),
+        "days_with_meals": len(by_day),
+        "per_day": _sizes([float(c) for c in counts]),
+        "by_type": by_type,
+        "by_band": by_band,
+        "intervals_hours": _sizes(intervals),
+        "overnight_fast_hours": _sizes(fasts),
+    }
+
+
+def _bolus_timing_band(lag_min: int | None) -> str:
+    """How a meal's insulin sat against the plate. ``None`` = no rapid dose within
+    ``_BOLUS_PAIR_WINDOW``, which is a real category, not missing data."""
+    if lag_min is None:
+        return "no rapid dose"
+    if lag_min <= -5:
+        return "pre-bolus"
+    if lag_min < 5:
+        return "with meal"
+    return "after eating"
+
+
+def _response_group(rows: list[dict]) -> dict:
+    """Pooled response figures for a set of ``post_meal`` rows."""
+    peaks = [r["peak_delta_display"] for r in rows if r.get("peak_delta_display") is not None]
+    carbs = [r["carbs_g"] for r in rows if r.get("carbs_g") is not None]
+    return {
+        "n": len(rows),
+        "mean_peak_delta": round(statistics.fmean(peaks), 1) if peaks else None,
+        "median_peak_delta": round(statistics.median(peaks), 1) if peaks else None,
+        "max_peak_delta": max(peaks) if peaks else None,
+        "mean_minutes_to_peak": round(statistics.fmean([r["minutes_to_peak"] for r in rows])),
+        "mean_peak": round(statistics.fmean([r["peak_display"] for r in rows]), 1),
+        "with_carbs": len(carbs),
+        "mean_carbs_g": round(statistics.fmean(carbs), 1) if carbs else None,
+        "mean_bolus_units": round(statistics.fmean([r["bolus_units"] for r in rows]), 1),
+    }
+
+
+def meal_response_groups(
+    responses: list[dict],
+    tz: tzinfo,
+    *,
+    min_occurrences: int = 2,
+) -> dict:
+    """Post-meal responses pooled by what was eaten, when, and how insulin landed.
+
+    One meal's +4 is anecdote; the same food doing it five times is a pattern, and
+    that only shows up pooled. Takes the rows ``post_meal_responses`` already
+    produced rather than re-deriving anything.
+
+    Association, and weak association at that. A plate is several foods at once,
+    and the same food recurs beside different doses, different starting glucose
+    and different days — so a food at the top of ``by_food`` is somewhere to look,
+    never something shown to have caused the rise. ``by_food`` needs
+    ``min_occurrences`` sightings before a food is pooled at all; one-offs stay
+    visible as individual rows in ``post_meal``.
+    """
+    by_food: dict[str, list[dict]] = {}
+    names: dict[str, str] = {}
+    by_type: dict[str, list[dict]] = {}
+    by_band: dict[str, list[dict]] = {}
+    by_bolus: dict[str, list[dict]] = {}
+
+    for row in responses:
+        for item in row.get("items", []):
+            key = item["name"].strip().casefold()
+            if not key:
+                continue
+            names.setdefault(key, item["name"].strip())
+            by_food.setdefault(key, []).append(row)
+        by_type.setdefault(row.get("meal_type") or "unspecified", []).append(row)
+        by_band.setdefault(_band(datetime.fromtimestamp(row["ts_utc"], tz).hour), []).append(row)
+        by_bolus.setdefault(_bolus_timing_band(row.get("bolus_lag_min")), []).append(row)
+
+    foods = [
+        dict(_response_group(rows), food=names[key])
+        for key, rows in by_food.items()
+        if len(rows) >= min_occurrences
+    ]
+    # Worst mean rise first: that is the order the question is asked in.
+    foods.sort(key=lambda g: (g["mean_peak_delta"] is None, -(g["mean_peak_delta"] or 0)))
+
+    def grouped(src: dict[str, list[dict]], label: str) -> list[dict]:
+        out = [dict(_response_group(rows), **{label: key}) for key, rows in src.items()]
+        out.sort(key=lambda g: -g["n"])
+        return out
+
+    return {
+        "min_occurrences": min_occurrences,
+        "by_food": foods,
+        "foods_below_threshold": sum(1 for rows in by_food.values() if len(rows) < min_occurrences),
+        "by_meal_type": grouped(by_type, "meal_type"),
+        "by_time_of_day": grouped(by_band, "band"),
+        "by_bolus_timing": grouped(by_bolus, "timing"),
     }
 
 

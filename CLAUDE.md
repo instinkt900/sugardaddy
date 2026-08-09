@@ -50,7 +50,8 @@ sugardaddy/            Python package
                        variability, daily_breakdown, hourly_profile, low_episodes,
                        insulin_summary, daily_intake, day_coverage,
                        day_window_start, smooth_glucose, basal_status,
-                       carb_coverage, notes_by_day) — no I/O, no clock, no config
+                       carb_coverage, notes_by_day, insulin_timing, meal_timing,
+                       meal_response_groups) — no I/O, no clock, no config
   report.py            `report` command: window + tz resolution, calls analysis, text/JSON
   templates/           base.html, phone/index.html, desktop/dashboard.html, partials/recent.html
   static/              style.css, phone.js, desktop.js, common.js, sw.js, vendored libs, icons/
@@ -132,6 +133,15 @@ sugardaddy vapid-keys                           # mint the Web Push signing key
 per-hour breakdowns, grouped low episodes, insulin summary, carb coverage,
 post-meal responses). `--db` overrides the config's DB path so a copied DB can be
 analysed off-box; units/targets/tz still come from the config.
+
+It also reports **habits**, which are what the totals hide: `insulin_timing`
+(clock window and dose sizes per kind — the window is circular, so 23:40 and
+00:10 are 30 min apart), `meal_timing` (plates per day, per meal type, gaps
+within a day vs the overnight break), and `meal_response_groups` (post-meal rows
+pooled by food, meal type, part of day, and where the bolus landed relative to
+the plate — `bolus_lag_min` on each row, negative = pre-bolus). Pooling by food
+is **association on mixed plates**: two foods always eaten together get identical
+figures, which is a fact about the plate, not the food.
 
 The one exception to "deterministic analysis only" is `notes` — the user's own
 free text, grouped by local day (same day key as `daily`) and printed verbatim

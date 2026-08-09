@@ -45,6 +45,19 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
     units = cfg.web.units
 
     summary = analysis.summarize(readings, low, high, units)
+    # Computed up front because the habit rollups below pool these same rows
+    # rather than walking the meals a second time.
+    post_meal = analysis.post_meal_responses(
+        readings,
+        meals,
+        units,
+        pm_doses,
+        dia_minutes=cfg.insulin.dia_minutes,
+        peak_minutes=cfg.insulin.peak_minutes,
+        isf_mgdl=cfg.isf_mgdl,
+        icr=cfg.insulin.icr,
+        target_mgdl=cfg.bolus_target_mgdl,
+    )
     span = None
     if readings:
         span = {
@@ -84,17 +97,13 @@ def build_report(db: Database, cfg, days: int, now_utc: int, tzinfo) -> dict:
             prescribed_units=cfg.prescription.basal_units,
         ),
         "carb_coverage": analysis.carb_coverage(meals),
-        "post_meal": analysis.post_meal_responses(
-            readings,
-            meals,
-            units,
-            pm_doses,
-            dia_minutes=cfg.insulin.dia_minutes,
-            peak_minutes=cfg.insulin.peak_minutes,
-            isf_mgdl=cfg.isf_mgdl,
-            icr=cfg.insulin.icr,
-            target_mgdl=cfg.bolus_target_mgdl,
-        ),
+        "post_meal": post_meal,
+        # The behavioural layer: when insulin and food actually happen, and what
+        # the responses look like once pooled. Totals hide all three.
+        "insulin_timing": analysis.insulin_timing(doses, tzinfo),
+        "meal_timing": analysis.meal_timing(meals, tzinfo),
+        "meal_response_groups": analysis.meal_response_groups(post_meal, tzinfo),
+        "daily_intake": analysis.daily_intake(meals, doses, tzinfo),
         # Experimental, and off unless [insulin].isf is configured — see
         # docs/plans/insulin-awareness.md Layer 4.
         "bolus_backtest": analysis.bolus_backtest(
@@ -212,6 +221,8 @@ def _fmt_text(rep: dict, tzinfo) -> str:
         L.append(f"  {kind:<12}{k['count']:>3} doses   {k['units']} u")
     L.append("")
 
+    L.extend(_fmt_insulin_timing(rep.get("insulin_timing") or {}))
+
     L.extend(_fmt_basal(rep.get("prescription") or {}, rep.get("basal_adherence") or {}))
 
     cc = rep["carb_coverage"]
@@ -219,6 +230,8 @@ def _fmt_text(rep: dict, tzinfo) -> str:
     if cc.get("partial"):
         L.append(f"  {cc['partial']} of those are PARTIAL (some items uncarbed) — the total understates the meal")
     L.append("")
+
+    L.extend(_fmt_meal_timing(rep.get("meal_timing") or {}))
 
     L.append("POST-MEAL RESPONSE (start → peak → +2h; IOB@start excludes the meal bolus)")
     if not rep["post_meal"]:
@@ -234,11 +247,99 @@ def _fmt_text(rep: dict, tzinfo) -> str:
             f"   Δ{m['peak_delta_display']:+}"
         )
 
+    L.append("")
+    L.extend(_fmt_response_groups(rep.get("meal_response_groups") or {}, u))
+
     bt = rep.get("bolus_backtest") or {}
     if bt.get("available"):
         L.append("")
         L.extend(_fmt_backtest(bt, tzinfo))
     return "\n".join(L)
+
+
+def _fmt_insulin_timing(it: dict) -> list[str]:
+    """When each kind of dose lands, and how big it is. The spread is the point:
+    it separates a routine from a habit that moves around the clock."""
+    kinds = it.get("by_kind") or {}
+    L = ["INSULIN TIMING (clock window holding all doses of a kind)"]
+    if not kinds:
+        L += ["  no doses logged", ""]
+        return L
+    L.append(f"  {'kind':<12}{'n':>3}  {'typical':>7}  {'window':<13}{'spread':>7}   size mean/med/min/max")
+    for kind, k in sorted(kinds.items()):
+        c, s = k["clock"], k["units"]
+        L.append(
+            f"  {kind:<12}{k['count']:>3}  {c['median'] or '—':>7}  "
+            f"{(c['earliest'] or '—') + '–' + (c['latest'] or '—'):<13}"
+            f"{(str(c['spread_min']) + 'm') if c['spread_min'] is not None else '—':>7}"
+            f"   {s['mean']}/{s['median']}/{s['min']}/{s['max']} u"
+        )
+        bands = ", ".join(f"{b} {n}" for b, n in sorted(k["by_band"].items(), key=lambda x: -x[1]))
+        L.append(f"  {'':<12}     {bands}")
+    L.append("")
+    return L
+
+
+def _fmt_meal_timing(mt: dict) -> list[str]:
+    """The eating day: how many plates, when, and the gaps between them."""
+    L = ["EATING PATTERN"]
+    if not mt.get("meal_count"):
+        L += ["  no meals logged", ""]
+        return L
+    pd, iv, of = mt["per_day"], mt["intervals_hours"], mt["overnight_fast_hours"]
+    L.append(
+        f"  {mt['meal_count']} meals over {mt['days_with_meals']} days"
+        f"  —  per day mean {pd['mean']}, range {pd['min']:g}–{pd['max']:g}"
+    )
+    if iv["median"] is not None:
+        L.append(f"  gap between plates in a day: median {iv['median']} h, shortest {iv['min']} h")
+    if of["median"] is not None:
+        L.append(f"  overnight break: median {of['median']} h, shortest {of['min']} h, longest {of['max']} h")
+    L.append(f"  {'type':<13}{'n':>3}  {'typical':>7}  {'window':<13}  carbs mean (n)")
+    for name, t in sorted(mt["by_type"].items(), key=lambda x: -x[1]["count"]):
+        c, cb = t["clock"], t["carbs_g"]
+        carbs = f"{cb['mean']}g ({t['with_carbs']}/{t['count']})" if cb["mean"] is not None else "—"
+        L.append(
+            f"  {name:<13}{t['count']:>3}  {c['median'] or '—':>7}  "
+            f"{(c['earliest'] or '—') + '–' + (c['latest'] or '—'):<13}  {carbs}"
+        )
+    bands = ", ".join(f"{b} {n}" for b, n in sorted(mt["by_band"].items(), key=lambda x: -x[1]))
+    L.append(f"  by part of day: {bands}")
+    L.append("")
+    return L
+
+
+def _fmt_response_groups(g: dict, units: str) -> list[str]:
+    """Post-meal responses pooled. Association only — see the docstring on
+    ``analysis.meal_response_groups`` for why a food at the top is a lead, not a
+    verdict."""
+    L = ["RESPONSE PATTERNS (pooled — association, not cause)"]
+    if not g:
+        L += ["  no meals with a matching glucose window", ""]
+        return L
+
+    def rows(items: list[dict], key: str, title: str) -> None:
+        if not items:
+            return
+        L.append(f"  {title}")
+        for it in items:
+            peak = f"{it['mean_peak_delta']:+}" if it["mean_peak_delta"] is not None else "   ?"
+            carbs = f"{it['mean_carbs_g']}g" if it["mean_carbs_g"] is not None else "?"
+            L.append(
+                f"    {str(it[key])[:26]:<26}{it['n']:>3}  mean Δ{peak:>6} {units}"
+                f"  peak +{it['mean_minutes_to_peak']}m  carbs {carbs:>6}"
+                f"  bolus {it['mean_bolus_units']}u"
+            )
+
+    rows(g.get("by_meal_type") or [], "meal_type", "by meal type")
+    rows(g.get("by_time_of_day") or [], "band", "by part of day")
+    rows(g.get("by_bolus_timing") or [], "timing", "by when the bolus landed (vs the plate)")
+    foods = g.get("by_food") or []
+    rows(foods, "food", f"by food (seen >= {g.get('min_occurrences', 2)}×, worst mean rise first)")
+    if g.get("foods_below_threshold"):
+        L.append(f"    ({g['foods_below_threshold']} foods seen fewer times — see the meal rows above)")
+    L.append("")
+    return L
 
 
 # "  " + day (10) + "  " + HH:MM (5) + "  " — what a wrapped note has to clear.
