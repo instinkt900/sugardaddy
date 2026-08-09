@@ -3,8 +3,9 @@ name: sugardaddy-review
 description: >-
   Pull the live sugardaddy glucose database off the serve host and produce a
   retrospective glucose-management review — time-in-range, variability, dawn /
-  time-of-day patterns, low episodes, insulin behaviour, and post-meal
-  responses — with a comparison against the previous review. Also writes a
+  time-of-day patterns, low episodes, insulin habits (dose timing and sizes),
+  eating habits (meal timing, snacking, foods), and post-meal responses by
+  food — with a comparison against the previous review. Also writes a
   standalone clinician-ready report (Markdown, HTML and PDF) for handing to a
   health professional. Use when the user asks to "review", "analyse", or "look
   at" their sugardaddy / CGM / glucose / insulin / meal data, to check how the
@@ -106,8 +107,12 @@ and ask the user rather than guessing.
 4. **Load the previous review for comparison.** List `"$SKILL_DIR/history/"` and
    read the most recent `report-*.json` (if any). Compute deltas on the headline
    metrics: time-in-range, average / GMI, CV, below-range %, number of low
-   episodes, and carb-logging coverage. If there is no prior file, say so — this
-   is the baseline.
+   episodes, and carb-logging coverage. Also trend the **habit** figures where the
+   older file has them: basal `clock.spread_min`, correction count, meals per day,
+   median overnight fast. Habits move slower than TIR, so a shift in one of these
+   is usually the more meaningful change. An older run predating a section simply
+   has no delta — say so rather than treating it as a change. If there is no prior
+   file at all, say so — this is the baseline.
 
 5. **Save this run** for next time. Ask the user for today's date if you don't
    have it, then write the JSON to
@@ -166,8 +171,11 @@ semicolons, no contractions. Two deliberate departures from that skill:
    by-time-of-day tables. Mark part days at the window edges with a footnote.
    Follow with one short summary sentence naming the main deficit.
 3. **Observations from the data** — bullets grouped under glucose pattern,
-   insulin, hypoglycaemia, and meals. Facts only. Bold the finding, not the
-   commentary.
+   insulin (including dose timing and dose sizes), hypoglycaemia, and meals
+   (including meal timing, snacking and the foods with the largest responses).
+   Facts only. Bold the finding, not the commentary. Give each habit finding its
+   count and window — a clinician cannot weigh "inconsistent" but can weigh
+   "9 basal doses spread across 21:10 to 02:30".
 4. **Suggested changes and experiments** — a table: *question from the data* →
    *suggested experiment* → *what to watch*. This is the section the clinician
    will judge the report by, so every row must trace to a specific finding above.
@@ -252,6 +260,86 @@ Read the JSON, don't re-derive the maths. Focus the write-up on management:
   `carb_coverage.partial` counts plates where only *some* items were carbed: the
   total understates the meal, so treat those meals' carb figures as soft.
 
+### Habits — insulin, food, and what follows
+
+Four sections exist for behaviour rather than control, and they are the point of
+the review as much as TIR is. Totals cannot show any of this: two weeks with the
+same units and the same carbs can be two completely different fortnights.
+
+**`insulin_timing`** — per kind (`basal` / `bolus` / `correction`):
+- `clock` is the *tightest window* holding every dose of that kind, computed
+  circularly so a 23:40 and a 00:10 read as 30 minutes apart, not 23 hours.
+  `spread_min` is the habit's looseness: a basal at 22:00 ± 15 min and one
+  scattered over five hours give the same weekly units and are not the same
+  behaviour. For a once-daily basal, a wide spread is the single most useful
+  behavioural finding in this section — a dose drifting later each day shortens
+  and lengthens its own coverage.
+- `units` (mean/median/min/max) shows whether a kind is one standard dose or a
+  range. A basal with a min well under its median usually means a half dose or a
+  mistyped entry — say which you think it is and why, and never suggest a size.
+- `by_band` (morning / midday / evening / night) localises a correction habit.
+  Corrections piling into one band is a different story from corrections
+  scattered evenly, and points at that band's meals or basal coverage.
+
+**`meal_timing`** — the shape of the eating day:
+- `per_day` and `by_type` counts: how many plates, and whether they are tagged.
+  Untagged plates land in `unspecified`; a large `unspecified` count is a
+  logging-hygiene note, not a finding about eating.
+- `intervals_hours` are the gaps *within* a local day. A short median with a high
+  meal count is grazing; a long median with few plates is distinct meals. Read
+  `min` beside the snack count before calling anything grazing.
+- `overnight_fast_hours` is the last plate of a day to the first of the next —
+  the one long stretch the trace gets to settle. A short or shrinking overnight
+  break is worth naming, especially beside a poor `hourly` overnight profile.
+  Gaps across a day with no meals logged are excluded, so this never reports a
+  hole in the record as a fast.
+- `by_type` carries each type's own `clock` window. Late or drifting dinners show
+  here, and they are the most common driver of an overnight pattern.
+
+**`meal_response_groups`** — the same post-meal rows pooled four ways, so a
+pattern no single meal shows becomes visible:
+- `by_food` groups every item seen at least `min_occurrences` times, worst mean
+  rise first. This is the "which foods spike me" question, and the answer is
+  **association only**: a plate is several foods at once, and the same food
+  recurs beside different doses, different starting glucose and different days.
+  Name a food as *worth watching*, never as proven. Say the n out loud — three
+  sightings is a lead, ten is a pattern. `foods_below_threshold` counts the
+  one-offs that were not pooled; they are still individual rows in `post_meal`.
+- `by_meal_type` and `by_time_of_day` answer which *occasion* runs hot, which is
+  usually more actionable than any single food.
+- `by_bolus_timing` buckets each meal by where its rapid dose landed relative to
+  the plate: `pre-bolus` (≥5 min before), `with meal` (±5 min), `after eating`
+  (>5 min after), `no rapid dose` (nothing within 45 min). The mean peak rise per
+  bucket is the closest thing in the report to a controlled comparison of the
+  user's own habits — but the buckets are not randomised, so confounding is
+  everywhere (people pre-bolus the meals they know are big). Report the
+  difference and the confound in the same breath.
+- Each `post_meal` row now carries `meal_type`, `items` (the actual plate),
+  `carbs_complete` and `bolus_lag_min`, so any grouping above can be traced back
+  to the meals that made it.
+
+**`daily_intake`** — carbs, calories and rapid insulin per local day, each with a
+`*_complete` flag. Use it for the intake trend across the window and for the
+carbs-to-insulin relationship day by day. **Never total or average a column whose
+flag is false** without saying it is a floor, not a figure.
+
+Rules for this whole area:
+- **Describe behaviour, do not moralise about food.** "The three highest mean
+  rises are all bread-based" is an observation. "Cut down on bread" is diet
+  advice, which is outside this skill exactly as dose advice is. Foods are
+  neutral; what varies is how they were covered and when they were eaten.
+- **Habit findings need a count and a window.** "Basal ranged 21:10–02:30 across
+  9 doses" beats "your basal timing is inconsistent".
+- **Separate a snack from a hypo treatment.** A small fast-carb plate at 03:00 is
+  probably a treated low, not a habit to change — check the starting glucose and
+  the nearest `low_episodes` entry before classifying it.
+- **Say when the sample is too thin.** Under ~5 meals in a bucket, or under ~3
+  sightings of a food, report the figure as provisional or leave it out.
+- **Good habits get named too.** The user asked for both. A tight basal window, a
+  consistent overnight break, meals that peak under +3, a pre-bolus habit that is
+  clearly working — call these out explicitly and say what is holding them up.
+  A review that only lists problems gets read once.
+
 ### Context notes (`notes`)
 
 Free text the user logged against a time — illness, exercise, travel, a bad
@@ -334,7 +422,16 @@ non-medical-advice guardrail applies to this section as much as the rest.
 
 Lead with a short headline (overall control + the single most important thing
 that changed or needs attention), then a compact metrics table with trend arrows
-vs last review, then the patterns as short bullets, then the **Talking points**
-section above, and finish with the non-medical-advice reminder and one or two
-data-hygiene suggestions (e.g. carb logging). Keep it tight and
+vs last review, then the patterns as short bullets, then **Habits**, then the
+**Talking points** section above, and finish with the non-medical-advice reminder
+and one or two data-hygiene suggestions (e.g. carb logging). Keep it tight and
 management-focused, not a data dump.
+
+**Habits** is its own section, and it is what the user comes back for. Split it
+into **working** and **watch**, in that order, and keep each to a handful of
+lines. Draw it from the four habit sections above (insulin timing and sizes,
+eating pattern, pooled responses, daily intake). Every line carries the figure it
+came from. The bar for inclusion is that the user would not already know it — a
+habit is only worth a line if seeing it written down is news. Where a habit and a
+number connect, say so ("the two evening lows both follow a correction inside
+three hours of the meal bolus"); where they merely coincide, say that instead.
