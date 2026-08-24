@@ -239,9 +239,15 @@
     }
     function close() { list.hidden = true; active = -1; input.setAttribute("aria-expanded", "false"); }
     function highlight() { list.querySelectorAll("li[data-i]").forEach((li, i) => li.classList.toggle("active", i === active)); }
-    input.addEventListener("focus", open);
-    input.addEventListener("click", open);
-    input.addEventListener("input", open); // re-filter the list as you type
+    // The dropdown is a typing aid, not a browse menu: on a phone a tap to
+    // focus brings the keyboard up, and the full list on top of that buries
+    // the rest of the form. So focus/click open it only when text is already
+    // in the box, and close it otherwise (a stale list from before a blur
+    // must not linger); the first keystroke is what brings it up.
+    const openIfTyping = () => { if (input.value.trim()) open(); else close(); };
+    input.addEventListener("focus", openIfTyping);
+    input.addEventListener("click", openIfTyping);
+    input.addEventListener("input", open); // drops the list on the first keystroke, re-filters after
     input.addEventListener("blur", () => setTimeout(close, 120));
     input.addEventListener("keydown", (e) => {
       if (list.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) { open(); return; }

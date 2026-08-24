@@ -885,8 +885,12 @@
     const carbsI = tr.querySelector(".it-carbs");
     const calI = tr.querySelector(".it-cal");
     nameI.dataset.foodId = it.food_id ?? "";
+    // A native <datalist> drops every option on mere focus, which the phone
+    // combobox doesn't do — so detach the list while the field is empty and
+    // re-attach it on the first keystroke, keeping the two UIs consistent.
+    nameI.addEventListener("focus", () => { if (!nameI.value.trim()) nameI.removeAttribute("list"); });
     // Typing detaches from a library food; matching a food name re-links + fills.
-    nameI.addEventListener("input", () => { nameI.dataset.foodId = ""; });
+    nameI.addEventListener("input", () => { nameI.setAttribute("list", "foods-datalist"); nameI.dataset.foodId = ""; });
     nameI.addEventListener("change", () => {
       const f = FOODS.find((x) => x.name.toLowerCase() === nameI.value.trim().toLowerCase());
       if (f) {
