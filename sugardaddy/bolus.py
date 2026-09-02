@@ -9,6 +9,9 @@ Three rules shape everything here:
    "it says 12 u, I feel 6, where's the disconnect?" A number the user obeys
    blindly would be worse than none, so this never returns a bare figure: it
    returns the components, and callers are expected to show them.
+   That is also why **IOB is reported beside the figure, never subtracted from
+   it** (see ``bolus_reference``): the arithmetic answers "what does this plate
+   ask for", and what the depot already holds is the user's call to make.
 2. **Parameters are user/clinician-owned.** ISF and ICR are never inferred or
    auto-tuned from history (too noisy — see the plan doc). Unset means the
    reference is *unavailable*, not guessed: a confident number on a shaky ISF is
@@ -29,14 +32,17 @@ from dataclasses import dataclass, field
 class BolusReference:
     """A calculated reference dose *and the components that produced it*.
 
-    ``suggested_units`` is ``None`` whenever a required input is missing — the
-    reason lands in ``missing`` so the caller can say "no ISF configured" rather
-    than silently showing a number that only covers half the picture."""
+    ``suggested_units`` covers *this* plate — carbs plus correction — and is
+    ``None`` whenever a required input is missing, with the reason in ``missing``
+    so the caller can say "no ISF configured" rather than silently showing a
+    number that only covers half the picture. ``iob_units`` is the already-active
+    insulin reported *alongside* it, never netted off: the two stand side by side
+    and the user reconciles them."""
 
     suggested_units: float | None
     carb_units: float | None        # carbs / ICR
     correction_units: float | None  # (glucose - target) / ISF; negative when below target
-    iob_units: float                # already-active insulin, subtracted (anti-stacking)
+    iob_units: float                # already-active insulin, reported beside the figure
     missing: list[str] = field(default_factory=list)
 
     @property
@@ -62,13 +68,20 @@ def bolus_reference(
     carbs_g: float | None,
     iob_units: float = 0.0,
 ) -> BolusReference:
-    """The standard open-loop formula: carbs/ICR + (glucose-target)/ISF - IOB.
+    """The open-loop formula for the plate in front of you: carbs/ICR +
+    (glucose-target)/ISF. **IOB is carried alongside, not subtracted.**
 
-    The **IOB subtraction is the anti-stacking guard** — the single most useful
-    part of the calculation, and the one a tired human most often skips. Each
-    component degrades independently: no carbs logged still gives a correction
-    figure, and a dose below target yields a *negative* correction that eats into
-    the carb cover, which is the intended behaviour.
+    Netting IOB off the total is the usual anti-stacking guard, and it is the
+    wrong shape for this app. Cover a meal fully, eat again an hour later, and
+    the subtraction reports ~0 u for a plate of real carbohydrate — which reads
+    as "nothing needed" when what it means is "the last dose is still working".
+    Those are different facts, so they are two numbers: what these carbs ask for,
+    and what is already on board. Judging the overlap is the user's call, and
+    they can only make it if they can see both.
+
+    Each component still degrades independently: no carbs logged gives a
+    correction-only figure, and a glucose below target yields a *negative*
+    correction that eats into the carb cover, which is the intended behaviour.
 
     The total is floored at zero (insulin cannot be un-given) but is **not**
     rounded to a syringe increment — it stays at 1 dp so it reads as a computed
@@ -101,7 +114,7 @@ def bolus_reference(
         # Nothing computable — report why rather than implying zero.
         return BolusReference(None, None, None, round(iob_units, 2), missing)
 
-    total = (carb_units or 0.0) + (correction_units or 0.0) - iob_units
+    total = (carb_units or 0.0) + (correction_units or 0.0)
     return BolusReference(
         suggested_units=round(max(total, 0.0), 1),
         carb_units=None if carb_units is None else round(carb_units, 2),
@@ -123,5 +136,6 @@ def describe(ref: BolusReference, units: str = "u") -> str:
     if ref.correction_units is not None:
         bits.append(f"{ref.correction_units:+g}{units} correction")
     if ref.iob_units:
-        bits.append(f"-{ref.iob_units:g}{units} active")
+        # Beside the sum, not inside it — no sign, because it is not a term.
+        bits.append(f"{ref.iob_units:g}{units} already active")
     return " · ".join(bits)

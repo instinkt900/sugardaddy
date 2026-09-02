@@ -319,6 +319,31 @@ def test_post_meal_still_sorted_recent_first():
     assert out[0]["bolus_units"] == 0.0 and out[0]["iob_start_units"] == 0.0, out[0]
 
 
+def test_a_just_logged_meal_appears_before_any_response_exists():
+    """The desktop table must not hide a meal for the minutes it takes the sensor
+    to produce a reading after it — the insulin context is useful straight away."""
+    readings = [r(i * 300, 8.0) for i in range(0, 12)]  # data ends at T0 + 55 min
+    fresh = Meal(ts_utc=T0 + 3600, name="just eaten")   # logged after the last reading
+    (row,) = analysis.post_meal_responses(
+        readings, [fresh], UNITS, [InsulinDose(ts_utc=T0 + 3600, units=5.0)]
+    )
+    assert row["pending"] is True, row
+    assert row["bolus_units"] == 5.0                     # what IS known is there
+    # Empty glucose columns, not zeroes: "not yet" must never render as "flat".
+    assert row["peak_display"] is None and row["peak_delta_display"] is None
+    assert row["minutes_to_peak"] is None and row["end_display"] is None
+    # ...and it stays out of anything that averages responses.
+    assert analysis.meal_response_groups([row], timezone.utc)["by_meal_type"] == []
+
+
+def test_an_old_meal_with_no_readings_is_still_skipped():
+    """A pending row means "the response is coming". A meal from a week-old sensor
+    gap has no response coming, so it must not sit in the table forever."""
+    readings = [r(i * 300, 8.0) for i in range(0, 12)]
+    stale = Meal(ts_utc=T0 - 8 * 3600, name="during a sensor gap")
+    assert analysis.post_meal_responses(readings, [stale], UNITS) == []
+
+
 def test_iob_curve_endpoints_and_decay():
     dia, tp = 300, 75
     # Full unit on board at the instant of the dose; gone by DIA.

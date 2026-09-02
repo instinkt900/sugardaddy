@@ -358,7 +358,8 @@
     // judgement is diagnosable, and it names the inputs it went without rather
     // than quietly treating them as zero.
     const refEl = document.getElementById("meal-ref");
-    const refVal = refEl && refEl.querySelector(".mr-val");
+    const refVal = refEl && refEl.querySelector(".mr-fig .mr-val");
+    const refIob = document.getElementById("mr-iob-val");
     const refParts = document.getElementById("mr-parts");
     const refWhy = document.getElementById("mr-why");
     let refOff = false;   // no ISF configured: the panel doesn't exist at all
@@ -397,11 +398,13 @@
       refEl.classList.toggle("mr-partial", why.length > 0);
       refVal.textContent =
         r.suggested_units == null ? "—" : `≈${uStr(r.suggested_units)}${why.length ? "*" : ""}`;
+      // Deliberately NOT folded into the figure beside it: a plate fully covered
+      // an hour ago would otherwise report 0 u for the carbs going in now.
+      if (refIob) refIob.textContent = r.iob_units ? uStr(r.iob_units) : "none";
 
       const bits = [];
       if (r.carb_units != null) bits.push(`${uStr(r.carb_units)} carbs`);
       if (r.correction_units != null) bits.push(`${signedU(r.correction_units)} correction`);
-      if (r.iob_units) bits.push(`−${uStr(r.iob_units)} active`);
       if (d.glucose != null && !d.glucose_stale) {
         // Both to the precision the unit is conventionally quoted at — JSON
         // hands back 7.0 as 7, and "at 5.1, target 7" reads like two scales.

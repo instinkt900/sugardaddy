@@ -46,15 +46,30 @@ def meal(offset_s: int, carbs: float | None, name: str = "meal") -> Meal:
 
 
 def test_components_add_up():
-    # 60 g at 10 g/u = 6 u; 11 mmol/L against a 6.0 target at 2.5 = +2 u; minus 1 u IOB.
+    # 60 g at 10 g/u = 6 u; 11 mmol/L against a 6.0 target at 2.5 = +2 u. IOB rides
+    # alongside at 1 u and is NOT taken off the total.
     ref = bolus_reference(
         bg_mgdl=mmol_to_mgdl(11.0), target_mgdl=TARGET, isf_mgdl_per_unit=ISF,
         icr_g_per_unit=ICR, carbs_g=60, iob_units=1.0,
     )
     assert ref.carb_units == 6.0, ref
     assert ref.correction_units == 2.0, ref
-    assert ref.suggested_units == 7.0, ref  # 6 + 2 - 1
+    assert ref.suggested_units == 8.0, ref  # 6 + 2, IOB kept separate
+    assert ref.iob_units == 1.0, ref
     assert ref.available and ref.missing == []
+
+
+def test_iob_is_reported_not_deducted():
+    """The behaviour this app exists to avoid: a plate fully covered an hour ago
+    must not make the NEXT plate's carbs read as 0 u. The active insulin is a
+    second figure shown beside the first, and the user judges the overlap."""
+    ref = bolus_reference(
+        bg_mgdl=TARGET, target_mgdl=TARGET, isf_mgdl_per_unit=ISF,
+        icr_g_per_unit=ICR, carbs_g=60, iob_units=6.0,
+    )
+    assert ref.carb_units == 6.0 and ref.correction_units == 0.0
+    assert ref.suggested_units == 6.0, ref  # the new carbs, in full
+    assert ref.iob_units == 6.0, ref
 
 
 def test_below_target_gives_negative_correction():
@@ -68,12 +83,14 @@ def test_below_target_gives_negative_correction():
     assert ref.suggested_units == 4.0, ref  # 5 - 1
 
 
-def test_iob_subtraction_floors_at_zero():
-    """Insulin already on board can cancel the dose entirely, but never invert it."""
+def test_a_negative_total_floors_at_zero():
+    """A correction well below target can cancel the carb cover entirely, but the
+    figure never inverts — insulin cannot be un-given."""
     ref = bolus_reference(
-        bg_mgdl=mmol_to_mgdl(7.0), target_mgdl=TARGET, isf_mgdl_per_unit=ISF,
+        bg_mgdl=mmol_to_mgdl(3.0), target_mgdl=TARGET, isf_mgdl_per_unit=ISF,
         icr_g_per_unit=ICR, carbs_g=0, iob_units=6.0,
     )
+    assert ref.correction_units < 0, ref
     assert ref.suggested_units == 0.0, ref
     assert ref.iob_units == 6.0
 
@@ -120,7 +137,9 @@ def test_describe_shows_every_component():
         icr_g_per_unit=ICR, carbs_g=60, iob_units=1.0,
     )
     note = describe(ref)
-    assert "6u carbs" in note and "+2u correction" in note and "-1u active" in note, note
+    assert "6u carbs" in note and "+2u correction" in note, note
+    # Beside the sum, and worded so it can't be read as a term in it.
+    assert "1u already active" in note, note
 
 
 # --------------------------------------------------------------------------
@@ -163,9 +182,9 @@ def test_backtest_treats_a_lone_dose_as_a_correction():
     assert e["delta_units"] == 1.0              # gave 1 u more than the reference
 
 
-def test_backtest_subtracts_earlier_insulin():
-    """The anti-stacking guard: an identical second dose must score differently
-    because the first one is still working."""
+def test_backtest_reports_earlier_insulin_beside_the_reference():
+    """Stacking must be *visible* without being folded into the figure: the second
+    dose carries the depot from the first as its own number, not as a deduction."""
     doses = [
         InsulinDose(ts_utc=T0, units=5.0, kind="bolus"),
         InsulinDose(ts_utc=T0 + 3600, units=5.0, kind="correction"),
@@ -178,8 +197,11 @@ def test_backtest_subtracts_earlier_insulin():
     second = [e for e in out["events"] if e["ts_utc"] == T0 + 3600][0]
     assert first["iob_units"] == 0.0
     assert second["iob_units"] > 3.0, second      # most of 5 u still on board
-    assert second["ref"]["suggested_units"] == 0.0  # fully covered already
-    assert second["delta_units"] == 5.0            # flagged as stacking
+    # The reference answers "what does the glucose ask for", the IOB is reported
+    # beside it; the stacking is visible in the pair, not folded into one number.
+    assert second["ref"]["suggested_units"] == 2.0
+    assert second["ref"]["iob_units"] == second["iob_units"]
+    assert second["delta_units"] == 3.0
 
 
 def test_backtest_excludes_basal():

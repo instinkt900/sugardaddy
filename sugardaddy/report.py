@@ -240,9 +240,17 @@ def _fmt_text(rep: dict, tzinfo) -> str:
         carbs = f"{m['carbs_g']}g" if m["carbs_g"] is not None else "  ?"
         bolus = f"{m['bolus_units']}u" if m["bolus_units"] else "  ·"
         iob = f"{m['iob_start_units']}u" if m["iob_start_units"] else "  ·"
-        L.append(
+        head = (
             f"  {_local(m['ts_utc'], tzinfo)}  {(m['description'] or '')[:28]:<28}"
             f"  carbs {carbs:>5}  bolus {bolus:>5}  IOB {iob:>5}"
+        )
+        # A meal logged minutes ago has no response yet — say so, rather than
+        # printing a row of dashes that reads like a flat line.
+        if m.get("pending"):
+            L.append(f"{head}  response still to come")
+            continue
+        L.append(
+            f"{head}"
             f"  {m['start_display']} → {m['peak_display']} (+{m['minutes_to_peak']}m) → {m['end_display']}"
             f"   Δ{m['peak_delta_display']:+}"
         )

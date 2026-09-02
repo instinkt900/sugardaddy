@@ -82,8 +82,11 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   midnight-aligned window (deliberately not the chart's range, which can end
   mid-day and would show a part day beside whole ones)
 - `GET /api/bolus-reference?carbs=N` — the EXPERIMENTAL live reference for the
-  plate being built on the phone (`bolus.bolus_reference` against current glucose
-  + IOB). Returns `{"enabled": false}` and nothing else when no ISF is configured
+  plate being built on the phone (`bolus.bolus_reference` against current
+  glucose). Covers **that plate only**: carbs + correction, with **IOB reported
+  beside the figure, never subtracted from it** — netting it off made a second
+  meal's real carbs read as 0 u. Returns `{"enabled": false}` and nothing else
+  when no ISF is configured
 - Write APIs: `POST /api/{insulin,meal,note,foods,meal-templates}`;
   `PATCH`/`DELETE /api/{insulin,meal,note,foods,meal-templates}/{id}`.
   `/api/insulin` and `/api/note` are form posts (the phone's HTMX tabs) and

@@ -94,8 +94,13 @@ log. It never asks for a dose. This feature is off by default. See
 **Experimental bolus reference.** When the config holds an insulin sensitivity
 factor, the app runs a textbook formula against doses that were already decided.
 It shows the result on the phone meal form, in the desktop post-meal table, and
-in `report`. The formula is the thing under test, not the person dosing. It is
-off unless someone sets `isf`. See
+in `report`. The figure covers the plate in front of you: carbs plus correction.
+Insulin still active from earlier doses sits beside it as a second number. The app
+does not subtract one from the other. That subtraction is the textbook rule, and
+it hides a real meal: cover one plate fully, eat again an hour later, and the
+total reads zero for carbohydrate you are about to eat. Two facts get two numbers,
+and you judge the overlap. The formula is the thing under test, not the person
+dosing. It is off unless someone sets `isf`. See
 [`docs/plans/insulin-awareness.md`](docs/plans/insulin-awareness.md) for the full
 reasoning and the safety boundary.
 

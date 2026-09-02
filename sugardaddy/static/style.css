@@ -218,11 +218,16 @@ textarea { font-family: inherit; resize: vertical; width: 100%; }
   border-left: 3px solid var(--high);
 }
 .meal-ref[hidden] { display: none; }
-.mr-top { display: flex; align-items: baseline; gap: 8px; }
+/* Two equal columns: the plate's figure and the active depot read as peers,
+   because the app deliberately leaves the arithmetic between them to the user. */
+.mr-top { display: flex; align-items: stretch; gap: 12px; }
+.mr-fig { flex: 1 1 0; min-width: 0; }
+.mr-iob { border-left: 1px solid var(--border); padding-left: 12px; }
 .mr-val { font-size: 20px; font-weight: 700; color: var(--text); line-height: 1.15; }
 .mr-lab { font-size: 12px; color: var(--muted); }
-/* An incomplete figure is still worth seeing, but it must not read as solid. */
-.mr-partial .mr-val { color: var(--muted); font-weight: 600; }
+/* An incomplete figure is still worth seeing, but it must not read as solid.
+   Only the plate's figure can be partial; the IOB is either known or absent. */
+.mr-partial .mr-fig:not(.mr-iob) .mr-val { color: var(--muted); font-weight: 600; }
 .mr-parts { font-size: 12.5px; margin-top: 4px; line-height: 1.5; }
 .mr-parts:empty { display: none; }
 .mr-why { font-size: 12px; margin-top: 4px; color: var(--high); line-height: 1.45; }
@@ -377,6 +382,9 @@ textarea { font-family: inherit; resize: vertical; width: 100%; }
 .ref-under { color: var(--accent); }          /* gave less */
 /* built from only some of its inputs — greyed and "*"-marked, never a plain number */
 .ref-partial { color: var(--muted); font-style: italic; }
+/* A meal logged moments ago: present and complete on the insulin side, with the
+   glucose columns still filling in. Marked, not hidden. */
+.data-table tr.pending td { background: rgba(127, 127, 127, 0.06); }
 .ref-caveat {
   margin: 0 0 10px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5;
   color: var(--muted); border-left: 3px solid var(--warn, #ffb020);

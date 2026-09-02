@@ -113,10 +113,12 @@
   </section>
 
   <section class="panel">
-    <h2>Post-meal response (2h) <span class="muted" style="font-weight:400;font-size:13px">— IOB @ start is insulin still active from earlier doses; it excludes the meal's own bolus</span></h2>
+    <h2>Post-meal response (2h) <span class="muted" style="font-weight:400;font-size:13px">— IOB @ start is insulin still active from earlier doses; it excludes the meal's own bolus. A meal appears as soon as it is logged; its glucose columns fill in as readings arrive</span></h2>
     <p id="ref-caveat" class="ref-caveat" hidden>
       <strong>Ref</strong> is an <strong>experimental</strong> calculated reference from your configured
-      ISF/ICR, shown to compare against the dose you actually decided on — a cross-check to question,
+      ISF/ICR for <em>that plate</em> — carbs plus correction, with <strong>IOB @ start deliberately
+      not deducted</strong>, so a second meal an hour after a covered one still shows what its own carbs
+      ask for. Read the two columns side by side. It is a cross-check to question,
       <strong>not dosing advice</strong>. Δ is (your dose − reference). Hover a value for its breakdown.
       A <strong>*</strong> means the figure was built from only some of its inputs — usually a plate
       where not every item has a carb count — so it understates the meal and is not comparable.

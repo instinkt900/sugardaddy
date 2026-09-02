@@ -106,15 +106,26 @@
          docs/plans/insulin-awareness.md for why it shows its components and is
          worded as a cross-check rather than a dose. #}
       <section id="meal-ref" class="meal-ref" hidden aria-live="polite">
+        {# Two figures, side by side and never netted against each other: what
+           this plate asks for, and what is already working from earlier doses.
+           Subtracting the second from the first turned a second meal's real
+           carbs into "0 u" — see bolus.bolus_reference. #}
         <div class="mr-top">
-          <div class="mr-val">—</div>
-          <div class="mr-lab">reference for this plate</div>
+          <div class="mr-fig">
+            <div class="mr-val">—</div>
+            <div class="mr-lab">for this plate</div>
+          </div>
+          <div class="mr-fig mr-iob">
+            <div id="mr-iob-val" class="mr-val">—</div>
+            <div class="mr-lab">already active</div>
+          </div>
         </div>
         <div id="mr-parts" class="mr-parts muted"></div>
         <div id="mr-why" class="mr-why"></div>
         <p class="mr-caveat muted">
           Experimental — the formula's read on your configured ISF/ICR, to compare
-          against the dose you'd already give. Not advice; your own call wins.
+          against the dose you'd already give. It does not deduct active insulin;
+          that overlap is yours to judge. Not advice; your own call wins.
         </p>
       </section>
 

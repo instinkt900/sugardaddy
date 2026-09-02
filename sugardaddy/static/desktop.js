@@ -490,10 +490,17 @@
            <td class="ref-col ${partial ? "ref-partial" : p.ref_delta_units > 0 ? "ref-over" : p.ref_delta_units < 0 ? "ref-under" : ""}"
                title="${esc(why)}">
              ${p.ref_delta_units > 0 ? "+" : ""}${p.ref_delta_units}${partial ? "*" : ""}</td>`;
+      // A meal logged minutes ago is in the table straight away, with its carbs,
+      // bolus, IOB and reference — the glucose columns fill in as the sensor
+      // catches up. Blanks here mean "not yet", so they must not render as 0.
+      const g = (v) => (v == null ? `<span class="muted">·</span>` : v);
+      tr.classList.toggle("pending", !!p.pending);
       tr.innerHTML = `<td>${p.local}</td><td>${esc(p.description) || "(meal)"}</td>
         <td>${p.carbs_g ?? ""}</td><td>${dose(p.bolus_units)}</td><td>${dose(p.iob_start_units)}</td>${ref}
-        <td>${p.start_display}</td><td>${p.peak_display}</td>
-        <td>${p.peak_delta_display}</td><td>${p.minutes_to_peak}m</td><td>${p.end_display}</td>`;
+        <td>${g(p.start_display)}</td><td>${g(p.peak_display)}</td>
+        <td>${p.peak_delta_display == null ? `<span class="muted" title="response still to come">awaiting</span>` : p.peak_delta_display}</td>
+        <td>${p.minutes_to_peak == null ? `<span class="muted">·</span>` : p.minutes_to_peak + "m"}</td>
+        <td>${g(p.end_display)}</td>`;
       tb.appendChild(tr);
     });
   }

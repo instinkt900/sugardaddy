@@ -432,6 +432,11 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         `missing` flags as incomplete so a small figure can't read as "no dose
         needed" when the food simply hasn't been entered yet.
 
+        The figure covers *this plate only* — `ref.iob_units` rides alongside it
+        and is never deducted (see `bolus.bolus_reference`), so a second meal an
+        hour after a fully covered one still shows what its own carbs ask for.
+        The phone shows the two side by side and leaves the overlap to the user.
+
         Gated on a configured ISF exactly like the retrospective surfaces —
         `enabled: false` is the whole answer when there is none, and the phone
         hides its panel on that alone rather than showing a guessed number.

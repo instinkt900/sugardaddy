@@ -375,8 +375,11 @@ What you may do with it:
 - Report **agreement drift**: how `mean_abs_delta`, `mean_signed_delta` and
   `within_1u_percent` moved since the last review. That is a fact about the
   model, and it is the main reason the section exists.
-- Note **which component** drives a systematic gap — carb cover vs correction vs
-  the IOB subtraction — since that localises *why* model and human disagree.
+- Note **which component** drives a systematic gap — carb cover vs correction —
+  since that localises *why* model and human disagree. `iob_units` is context
+  beside the figure, not a term in it: the reference never deducts active insulin,
+  so a positive Δ on a dose with insulin already on board may be the user
+  correctly accounting for a depot the formula deliberately leaves to them.
 - Observe that disagreement concentrates somewhere (e.g. large meals, or doses
   with insulin already active) as a **pattern worth understanding**.
 

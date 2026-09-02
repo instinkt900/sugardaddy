@@ -236,8 +236,13 @@ A genuine build goal, not a throwaway — pursued for academic interest and the 
 of tuning it, and doubling as the richer anchor from the motivation. It is **not**
 a dosing directive: the user is confident with their own ranges and wants the
 number as something to *reconcile against*, per the "says 12, I feel 6" example.
-- Combine current BG, target, ISF, ICR, carbs, **minus IOB** (the IOB subtraction
-  is the anti-stacking guard).
+- Combine current BG, target, ISF, ICR and carbs into a figure for **the plate in
+  front of the user**, and report **IOB beside it, never subtracted from it**.
+  Netting IOB off is the textbook anti-stacking guard and it defeats the purpose
+  here: cover a meal fully, eat again an hour later, and the total reads ~0 u for
+  a plate of real carbohydrate — "nothing needed", when it means "the last dose is
+  still working". Two facts, two numbers; judging the overlap is the user's call,
+  which is the whole point of a reference you argue with (2026-09-02).
 - Show the calculated figure **and its components** ("≈ 3.2 u active · ~4 above
   target at your set ISF · N g carbs") so a disagreement is *diagnosable* — the
   user can see which input drives the gap between the number and their gut.

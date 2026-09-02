@@ -124,6 +124,15 @@ def post_meal_responses(
     with 8 u on board reads very differently from one with none, and a flat
     response may just be an earlier dose still coming down).
 
+    A meal logged in the last few minutes has **no** post-meal readings yet, and
+    dropping it until the sensor catches up made freshly logged plates vanish from
+    the table for several minutes. Such a meal is emitted as a ``pending`` row
+    instead: its insulin context (bolus, IOB, reference) is complete and useful
+    immediately, and the glucose columns are ``None`` until readings arrive. A
+    meal with no readings that is *older* than the data is a genuine sensor gap
+    and is still skipped. Callers doing arithmetic over responses must filter
+    ``pending`` out (``meal_response_groups`` does).
+
     When ``isf_mgdl``/``icr``/``target_mgdl`` are supplied, each row also carries
     the EXPERIMENTAL bolus reference for that meal (``ref_*``) so the dose that
     was actually given can be read beside a calculated one. Unset → the fields are
@@ -131,16 +140,20 @@ def post_meal_responses(
     if not readings:
         return []
     ordered = sorted(readings, key=lambda r: r.ts_utc)
+    last_ts = ordered[-1].ts_utc
     doses = doses or []
     out: list[dict] = []
 
     for meal in meals:
         start = _nearest(ordered, meal.ts_utc, _MEAL_MATCH_WINDOW)
         window = [r for r in ordered if meal.ts_utc <= r.ts_utc <= meal.ts_utc + _POST_MEAL_WINDOW]
-        if start is None or not window:
+        # Nothing after the plate yet, but the data simply hasn't got there —
+        # the meal is still unfolding, not unreadable.
+        pending = not window and meal.ts_utc + _POST_MEAL_WINDOW > last_ts
+        if not pending and (start is None or not window):
             continue
-        peak = max(window, key=lambda r: r.value_mgdl)
-        end = window[-1]
+        peak = max(window, key=lambda r: r.value_mgdl) if window else None
+        end = window[-1] if window else None
         # Meal bolus = rapid-acting doses co-timed with the meal (± match window).
         bolus_units = sum(
             d.units
@@ -175,11 +188,17 @@ def post_meal_responses(
             "carbs_g": meal.total_carbs,
             "carbs_complete": meal.carbs_complete,
             "bolus_lag_min": lag_min,
-            "start_display": to_display(start.value_mgdl, units),
-            "peak_display": to_display(peak.value_mgdl, units),
-            "peak_delta_display": _delta_display(peak.value_mgdl - start.value_mgdl, units),
-            "end_display": to_display(end.value_mgdl, units),
-            "minutes_to_peak": round((peak.ts_utc - meal.ts_utc) / 60),
+            # True while the response is still arriving: the glucose columns below
+            # are None and mean "not yet", never "flat".
+            "pending": peak is None,
+            "start_display": None if start is None else to_display(start.value_mgdl, units),
+            "peak_display": None if peak is None else to_display(peak.value_mgdl, units),
+            "peak_delta_display": (
+                None if peak is None or start is None
+                else _delta_display(peak.value_mgdl - start.value_mgdl, units)
+            ),
+            "end_display": None if end is None else to_display(end.value_mgdl, units),
+            "minutes_to_peak": None if peak is None else round((peak.ts_utc - meal.ts_utc) / 60),
             "bolus_units": round(bolus_units, 1),
             "iob_start_units": round(iob_start, 1),
         }
@@ -187,7 +206,7 @@ def post_meal_responses(
         # switch turns the experimental reference on everywhere or nowhere.
         if isf_mgdl is not None:
             ref = bolus_reference(
-                bg_mgdl=start.value_mgdl,
+                bg_mgdl=None if start is None else start.value_mgdl,
                 target_mgdl=target_mgdl,
                 isf_mgdl_per_unit=isf_mgdl,
                 icr_g_per_unit=icr,
@@ -948,7 +967,9 @@ def meal_response_groups(
     by_band: dict[str, list[dict]] = {}
     by_bolus: dict[str, list[dict]] = {}
 
-    for row in responses:
+    # A meal whose 2h window is still filling has no response to pool yet; letting
+    # one in would drag every average toward a number that doesn't exist.
+    for row in [r for r in responses if not r.get("pending")]:
         for item in row.get("items", []):
             key = item["name"].strip().casefold()
             if not key:
