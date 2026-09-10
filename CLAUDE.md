@@ -70,7 +70,14 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   at the edges via `constants.to_display`. Deltas via `_delta_display`.
 - **Meals are composite**: a header row + snapshot `meal_items`. Editing a `food`
   in the library never rewrites history (items are snapshots; `food_id` is soft
-  provenance only). Same for meal templates.
+  provenance only). Same for meal templates. **One narrow exception**: a food
+  logged with *no* carb count is "pending" (`Food.pending`, derived from
+  `carbs_g IS NULL`, never stored), and when its details first arrive
+  `db.backfill_meal_items` fills the items that referenced it — `WHERE ... IS
+  NULL` only, per column. Filling a blank completes an entry; a recorded value
+  is still never touched. Carb-less plate lines are auto-registered as pending
+  foods on `POST`/`PATCH /api/meal` so they surface as a to-do at the top of the
+  desktop Foods table.
 - **Insulin `kind`** is `bolus | correction | basal`. For any insulin-on-board
   math, include only bolus+correction (rapid-acting); basal is a separate depot.
 
@@ -86,11 +93,15 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   glucose). Covers **that plate only**: carbs + correction, with **IOB reported
   beside the figure, never subtracted from it** — netting it off made a second
   meal's real carbs read as 0 u. Returns `{"enabled": false}` and nothing else
-  when no ISF is configured
+  when no ISF is configured. The phone shows it stacked — correction (with the
+  glucose/target behind it), the plate's carb cover, their sum, then active
+  insulin below the rule and outside it
 - Write APIs: `POST /api/{insulin,meal,note,foods,meal-templates}`;
   `PATCH`/`DELETE /api/{insulin,meal,note,foods,meal-templates}/{id}`.
   `/api/insulin` and `/api/note` are form posts (the phone's HTMX tabs) and
-  answer with the recent partial when `HX-Request` is set; the rest are JSON
+  answer with the recent partial when `HX-Request` is set; the rest are JSON.
+  The phone reaches the `PATCH`/`DELETE` routes too: **long-pressing** an entry
+  in its recent list opens an edit sheet (meals including the whole plate)
 - **Notes** are free-text context events (`{ts, text}` — sickness, exercise, a
   bad night): stamp plus words, no categories. They ride along in
   `/api/{timeline,entries,recent}`, show in the phone's recent list, and on the
@@ -134,7 +145,11 @@ sugardaddy vapid-keys                           # mint the Web Push signing key
 
 `report` is deterministic analysis only (TIR/GMI, variability/CV, per-day and
 per-hour breakdowns, grouped low episodes, insulin summary, carb coverage,
-post-meal responses). `--db` overrides the config's DB path so a copied DB can be
+post-meal responses). A post-meal row's reference uses whatever carbs *were*
+logged and flags `ref_carbs_partial` when only some items had one — a figure
+marked as a floor beats a dash. Anything that *scores* the numbers
+(`bolus_backtest`, carb coverage) still treats a partial plate as unknown.
+`--db` overrides the config's DB path so a copied DB can be
 analysed off-box; units/targets/tz still come from the config.
 
 It also reports **habits**, which are what the totals hide: `insulin_timing`
