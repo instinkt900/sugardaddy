@@ -758,6 +758,7 @@
         <thead><tr><th>Food</th><th>Carbs</th><th>Cal</th><th>Count</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
+      ${m ? "" : mealRefMarkup()}
       <div class="me-actions">
         <button type="button" class="icon-btn me-additem">+ Item</button>
         <span style="flex:1"></span>
@@ -769,7 +770,14 @@
     const tbody = root.querySelector(".me-items tbody");
     (m ? m.items : []).forEach((it) => tbody.appendChild(itemRow(it)));
     if (!m) tbody.appendChild(itemRow({}));
-    root.querySelector(".me-additem").onclick = () => tbody.appendChild(itemRow({}));
+    // Only a plate being logged now gets the reference: it is evaluated against
+    // the *current* glucose and IOB, which says nothing about a meal from
+    // Tuesday, so editing an existing row shows no panel at all.
+    const refresh = m ? null : attachMealRef(root, tbody);
+    root.querySelector(".me-additem").onclick = () => { tbody.appendChild(itemRow({})); if (refresh) refresh(); };
+    // input covers typing; change catches a library food filling the macros in;
+    // click catches a row being removed. All three land on the same debounce.
+    if (refresh) ["input", "change", "click"].forEach((e) => tbody.addEventListener(e, refresh));
     root.querySelector(".me-cancel").onclick = load;
     root.querySelector(".me-save").onclick = () => {
       const body = {
@@ -782,6 +790,121 @@
       if (m) patch("meal", m.id, body);
       else createJSON("meal", body);
     };
+  }
+
+  // ---- experimental bolus reference (see sugardaddy/bolus.py) -------------
+  // The desktop twin of the phone's meal-ref panel, sharing its markup and CSS:
+  // the same formula the post-meal table replays retrospectively, run against
+  // the plate being typed. A figure to reconcile an intended dose against, never
+  // an amount to give — so it stays stacked (correction, plate, sum, and the
+  // depot below the rule) and names the inputs it went without.
+  function mealRefMarkup() {
+    return `<section class="meal-ref me-ref" hidden aria-live="polite">
+      <dl class="mr-stack">
+        <div class="mr-row"><dt>Correction</dt>
+          <dd class="mr-num mr-corr">—</dd><dd class="mr-note muted mr-corr-note"></dd></div>
+        <div class="mr-row"><dt>This plate</dt>
+          <dd class="mr-num mr-meal">—</dd><dd class="mr-note muted mr-meal-note"></dd></div>
+        <div class="mr-row mr-total"><dt>Together</dt>
+          <dd class="mr-num mr-total-val">—</dd><dd class="mr-note muted"></dd></div>
+        <div class="mr-row mr-iob"><dt>Active insulin</dt>
+          <dd class="mr-num mr-iob-val">—</dd>
+          <dd class="mr-note muted">already on board, not deducted</dd></div>
+      </dl>
+      <div class="mr-why"></div>
+      <p class="mr-caveat muted">Experimental — your configured ISF/ICR, not advice.</p>
+    </section>`;
+  }
+
+  // Carb total for the plate as typed, plus whether *every* named row fed it. A
+  // plate where half the rows have no carb count still totals to a number, and
+  // that number is a floor — the panel has to say so rather than imply a dose.
+  function plateCarbs(tbody) {
+    let total = 0, counted = 0, rows = 0;
+    readItems(tbody).forEach((it) => {
+      rows += 1;
+      const c = parseFloat(it.carbs_g);
+      if (it.carbs_g !== "" && !isNaN(c)) { total += c * (parseFloat(it.count) || 1); counted += 1; }
+    });
+    return { grams: counted ? Math.round(total * 10) / 10 : null, complete: rows > 0 && counted === rows };
+  }
+
+  function attachMealRef(root, tbody) {
+    const el = root.querySelector(".me-ref");
+    if (!el) return null;
+    const q = (c) => el.querySelector("." + c);
+    const uStr = (n) => `${Math.round(n * 10) / 10}u`;
+    const signedU = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${uStr(Math.abs(n))}`;
+    let off = false;   // no ISF configured: the panel doesn't exist at all
+    let timer = null;
+
+    // Everything the figure had to do without, worst first. The plate's own carb
+    // gaps are only visible here (the server sees a total, not which rows fed
+    // it), so they're folded in alongside the server's `missing` list.
+    function reasons(missing, d, carbsComplete) {
+      const why = [];
+      if (missing.includes("glucose")) {
+        why.push(d.glucose == null ? "there's no glucose reading yet"
+                                   : "the last glucose reading is too old to correct against");
+      }
+      if (missing.includes("isf")) why.push("no ISF is configured");
+      if (missing.includes("icr")) why.push("no carb ratio is configured");
+      if (missing.includes("carbs")) why.push("no carbs are entered yet");
+      else if (!carbsComplete) why.push("not every item on the plate has a carb count");
+      return why;
+    }
+
+    function render(d, carbs) {
+      if (!d.enabled) { off = true; el.hidden = true; return; }
+      const r = d.ref || {};
+      // A "*" marks a figure built from only some of its inputs — the same
+      // convention as the post-meal table and the report, so an incomplete 1.2u
+      // can't be read as "barely dose here" when the carbs simply aren't in yet.
+      const why = reasons(r.missing || [], d, carbs.complete);
+      const star = why.length ? "*" : "";
+      el.hidden = false;
+      el.classList.toggle("mr-partial", why.length > 0);
+
+      q("mr-corr").textContent = r.correction_units == null ? "—" : signedU(r.correction_units);
+      if (d.glucose != null && !d.glucose_stale) {
+        // Both to the precision the unit is conventionally quoted at — JSON
+        // hands back 7.0 as 7, and "at 5.1, target 7" reads like two scales.
+        const g = (n) => n.toFixed(d.units === "mg/dL" ? 0 : 1);
+        q("mr-corr-note").textContent = `at ${g(d.glucose)}, target ${g(d.target)} ${d.units}`;
+      } else {
+        q("mr-corr-note").textContent = d.glucose == null ? "no reading" : "reading too old";
+      }
+
+      q("mr-meal").textContent = r.carb_units == null ? "—" : uStr(r.carb_units);
+      q("mr-meal-note").textContent = carbs.grams == null ? "no carbs entered" : `${carbs.grams} g carbs`;
+
+      q("mr-total-val").textContent = r.suggested_units == null ? "—" : `≈${uStr(r.suggested_units)}${star}`;
+      // Deliberately NOT deducted from the figure above: a plate fully covered
+      // an hour ago would otherwise report 0 u for the carbs going in now.
+      q("mr-iob-val").textContent = r.iob_units ? uStr(r.iob_units) : "none";
+
+      q("mr-why").textContent = why.length ? `* ${why.join("; ")}` : "";
+    }
+
+    function fetchRef() {
+      if (!root.isConnected) return;   // editor closed under a pending timer
+      const carbs = plateCarbs(tbody);
+      const qs = carbs.grams != null ? `?carbs=${encodeURIComponent(carbs.grams)}` : "";
+      fetch(`/api/bolus-reference${qs}`)
+        .then((r) => r.json())
+        .then((d) => render(d, carbs))
+        .catch(() => {});
+    }
+
+    // Debounced: typing a carb count fires per keystroke, and a reference that
+    // flickers through three values on the way to one is harder to trust.
+    function refresh() {
+      if (off) return;
+      clearTimeout(timer);
+      timer = setTimeout(fetchRef, 250);
+    }
+    refresh();
+    return refresh;
   }
 
   // ---- foods (library) ----

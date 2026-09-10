@@ -451,6 +451,10 @@ textarea { font-family: inherit; resize: vertical; width: 100%; }
 .me-items td { padding: 4px 8px; }
 .me-items input { width: 100%; }
 .me-actions { display: flex; align-items: center; gap: 8px; }
+/* The bolus reference reuses the phone's .meal-ref card wholesale; it only
+   needs reining in here, where the editor spans the full table width and a
+   stretched panel would read as the main event rather than a cross-check. */
+.me-ref { max-width: 420px; }
 
 .templates-list { display: flex; flex-direction: column; gap: 8px; }
 .tmpl { background: var(--card-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
