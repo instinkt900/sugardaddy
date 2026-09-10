@@ -79,6 +79,18 @@ class Food:
     calories: float | None = None
     id: int | None = None
 
+    @property
+    def pending(self) -> bool:
+        """Whether this food is still waiting on the detail the app needs: carbs.
+
+        Derived rather than stored, so there is no flag to fall out of step with
+        the row — entering a carb count *is* what graduates a food off the
+        pending list. Calories are deliberately not part of it: they're nice to
+        have, but nothing in the analysis is blocked without them, and a food
+        nobody intends to calorie-count would otherwise sit on the to-do list
+        forever."""
+        return self.carbs_g is None
+
 
 @dataclass
 class MealItem:

@@ -385,6 +385,16 @@ textarea { font-family: inherit; resize: vertical; width: 100%; }
 /* A meal logged moments ago: present and complete on the insulin side, with the
    glucose columns still filling in. Marked, not hidden. */
 .data-table tr.pending td { background: rgba(127, 127, 127, 0.06); }
+/* Foods still waiting on a carb count: a to-do list pinned to the top of the
+   library table, under its own heading row. Marked rather than hidden away —
+   each one is a plate the carb analysis currently can't read. */
+.data-table tr.group-row td {
+  padding: 10px 8px 4px; font-size: 12px; text-transform: uppercase;
+  letter-spacing: .03em; color: var(--muted); border-bottom: 1px solid var(--border);
+}
+.data-table tr.food-pending td { background: rgba(255, 176, 32, .05); }
+.data-table tr.food-pending td:first-child { box-shadow: inset 3px 0 0 var(--high); }
+
 .ref-caveat {
   margin: 0 0 10px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5;
   color: var(--muted); border-left: 3px solid var(--warn, #ffb020);

@@ -264,6 +264,9 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "description": f.description,
             "carbs_g": f.carbs_g,
             "calories": f.calories,
+            # Derived, never stored — see Food.pending. Drives the "awaiting
+            # details" group at the top of the desktop Foods table.
+            "pending": f.pending,
         }
 
     def meal_template_json(t: MealTemplate) -> dict:
@@ -282,6 +285,37 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
                 for i in t.items
             ],
         }
+
+    def register_pending_foods(items: list[MealItem]) -> None:
+        """Give every carb-less line on a plate a food row to be chased up.
+
+        A food typed straight onto a plate with no carb count is exactly the
+        entry that blocks carb-ratio analysis later, and it used to leave no
+        trace anywhere but that one meal's snapshot — nothing to come back to.
+        Registering it in the library (and linking the item back via
+        ``food_id``) turns it into a to-do instead: it sits at the top of the
+        Foods table until someone fills in its carbs, and doing so backfills
+        every blank item that referenced it.
+
+        Lines that already carry carbs are left alone: they need nothing, and a
+        library row per one-off plate line would bury the list. A name that
+        already exists in the library is linked to rather than duplicated, and
+        if that food *does* know its carbs the item takes the snapshot it would
+        have got from the picker — the user typed a known food and just didn't
+        retype the numbers.
+        """
+        for it in items:
+            if it.carbs_g is not None or it.food_id is not None or not it.name:
+                continue
+            existing = db.get_food_by_name(it.name)
+            if existing is None:
+                it.food_id = db.add_food(Food(name=it.name))
+                continue
+            it.food_id = existing.id
+            if existing.carbs_g is not None:
+                it.carbs_g = existing.carbs_g
+                if it.calories is None:
+                    it.calories = existing.calories
 
     def recent_context() -> dict:
         start, end = now_epoch() - _DAY, now_epoch()
@@ -665,6 +699,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             note=(body.get("note") or "").strip(),
             items=_parse_meal_items(body.get("items")),
         )
+        register_pending_foods(meal.items)
         meal.id = db.add_meal(meal)
         # A named meal is also saved to the library — created, or updated by name.
         if name:
@@ -734,6 +769,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         if "note" in body:
             fields["note"] = (body["note"] or "").strip()
         items = _parse_meal_items(body["items"]) if "items" in body else None
+        if items:
+            register_pending_foods(items)
         ok = db.update_meal(meal_id, items=items, **fields)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
@@ -765,6 +802,24 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
 
     # --- foods (library) ------------------------------------------------
 
+    def _fill_blanks(
+        food_id: int, before: Food | None, carbs_g: float | None, calories: float | None
+    ) -> int:
+        """Details arriving for a food that had none → complete the items it left
+        blank. Returns how many logged items were filled.
+
+        Only a column that was unset *before* the edit is propagated: changing a
+        food's known carbs is a library correction and must not reach back into
+        history (see Database.backfill_meal_items), whereas a first-ever value is
+        completing entries that recorded nothing at all."""
+        if before is None:
+            return 0
+        return db.backfill_meal_items(
+            food_id,
+            carbs_g=carbs_g if before.carbs_g is None else None,
+            calories=calories if before.calories is None else None,
+        )
+
     @app.get("/api/foods")
     def list_foods():
         return [food_json(f) for f in db.list_foods()]
@@ -781,8 +836,14 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             carbs_g=_opt_num(body.get("carbs_g")),
             calories=_opt_num(body.get("calories")),
         )
-        # add_food upserts by name — return the stored (possibly merged) row.
-        return food_json(db.get_food(db.add_food(food)))
+        # add_food upserts by name, so this post is also how a food that was
+        # awaiting details gets them — fill the blanks it left behind too.
+        before = db.get_food_by_name(name)
+        food_id = db.add_food(food)
+        filled = _fill_blanks(food_id, before, food.carbs_g, food.calories)
+        stored = food_json(db.get_food(food_id))
+        stored["filled_items"] = filled
+        return stored
 
     @app.patch("/api/foods/{food_id}")
     async def update_food(food_id: int, request: Request):
@@ -801,8 +862,16 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             fields["carbs_g"] = _opt_num(body["carbs_g"])
         if "calories" in body:
             fields["calories"] = _opt_num(body["calories"])
+        before = db.get_food(food_id)
         ok = db.update_food(food_id, **fields)
-        return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
+        filled = (
+            _fill_blanks(food_id, before, fields.get("carbs_g"), fields.get("calories"))
+            if ok
+            else 0
+        )
+        return JSONResponse(
+            {"ok": ok, "filled_items": filled}, status_code=200 if ok else 404
+        )
 
     @app.delete("/api/foods/{food_id}")
     def delete_food(food_id: int):

@@ -782,15 +782,35 @@
   }
 
   // ---- foods (library) ----
+  // Foods with no carb count yet are a to-do list, not just incomplete rows:
+  // every one of them is a plate the carb analysis can't read. They sit at the
+  // top under their own heading so filling them in is a task you can work
+  // through, and drop into the alphabetical list below as soon as they're done.
   function renderFoods(list) {
     const tb = document.querySelector("#foods-table tbody");
     tb.innerHTML = "";
-    list.forEach((f) => tb.appendChild(foodRow(f)));
+    const pending = list.filter((f) => f.pending);
+    const known = list.filter((f) => !f.pending);
+    if (pending.length) {
+      tb.appendChild(foodGroupRow(`Awaiting details — ${pending.length} food${pending.length === 1 ? "" : "s"} logged without carbs`));
+      pending.forEach((f) => tb.appendChild(foodRow(f)));
+      if (known.length) tb.appendChild(foodGroupRow("Saved foods"));
+    }
+    known.forEach((f) => tb.appendChild(foodRow(f)));
+  }
+
+  function foodGroupRow(label) {
+    const tr = document.createElement("tr");
+    tr.className = "group-row";
+    tr.innerHTML = `<td colspan="5">${esc(label)}</td>`;
+    return tr;
   }
 
   function foodRow(f) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${esc(f.name)}</td><td>${esc(f.description)}</td><td>${f.carbs_g ?? ""}</td>
+    if (f.pending) tr.className = "food-pending";
+    tr.innerHTML = `<td>${esc(f.name)}</td><td>${esc(f.description)}</td>
+      <td>${f.carbs_g ?? `<span class="muted">—</span>`}</td>
       <td>${f.calories ?? ""}</td>
       <td class="row-actions"><button class="icon-btn" data-act="edit">Edit</button>
       <button class="icon-btn danger" data-act="del">✕</button></td>`;
@@ -819,7 +839,14 @@
   }
   function editFood(tr, f) {
     tr.innerHTML = foodEditCells(f);
-    tr.querySelector(".save").onclick = () => patch("foods", f.id, readFood(tr));
+    tr.querySelector(".save").onclick = () =>
+      patch("foods", f.id, readFood(tr)).then((res) => {
+        // Details for a food that had none also complete the blanks it left on
+        // past plates, which is invisible from this table — so say so.
+        if (res && res.filled_items) {
+          alert(`Saved. ${res.filled_items} logged item${res.filled_items === 1 ? "" : "s"} filled in from this food.`);
+        }
+      });
     tr.querySelector('[data-act="cancel"]').onclick = load;
   }
 
@@ -1043,15 +1070,16 @@
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     }).then(load);
   }
+  // Resolves with the parsed response so a caller can react to what the server
+  // did (the foods table reports how many logged items a fill-in reached).
   function patch(type, id, body) {
-    fetch(`/api/${type}/${id}`, {
+    return fetch(`/api/${type}/${id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     }).then(async (r) => {
-      if (!r.ok) {
-        const e = await r.json().catch(() => ({}));
-        alert(e.error || "Update failed.");
-      }
+      const res = await r.json().catch(() => ({}));
+      if (!r.ok) alert(res.error || "Update failed.");
       load();
+      return r.ok ? res : null;
     });
   }
   function del(type, id) {

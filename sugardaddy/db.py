@@ -415,6 +415,35 @@ class Database:
     def delete_food(self, food_id: int) -> bool:
         return self._delete("foods", food_id)
 
+    def backfill_meal_items(
+        self, food_id: int, *, carbs_g: float | None = None, calories: float | None = None
+    ) -> int:
+        """Fill logged items that reference ``food_id`` and were left blank.
+
+        This is the one place a snapshot is written after the fact, and it is
+        narrow on purpose. Editing a food never rewrites history (see the meal
+        model) because a recorded 30 g is what was *actually eaten*, and later
+        knowledge about that food doesn't change what was on the plate. A blank
+        is a different thing: it records nothing at all, so filling it completes
+        the entry rather than rewriting it. Hence ``IS NULL`` in the WHERE — a
+        value already snapshot on an item is never touched, whatever the library
+        now says.
+
+        Each column is guarded on its own, so a food that gains only calories
+        leaves items still waiting on carbs alone. Returns the number of item
+        rows changed, so the caller can say how much history was recovered."""
+        changed = 0
+        with self.connect() as conn:
+            for col, val in (("carbs_g", carbs_g), ("calories", calories)):
+                if val is None:
+                    continue
+                cur = conn.execute(
+                    f"UPDATE meal_items SET {col} = ? WHERE food_id = ? AND {col} IS NULL",
+                    (val, food_id),
+                )
+                changed = max(changed, cur.rowcount)
+        return changed
+
     # --- meals (composite: header + snapshot items) ----------------------
 
     def add_meal(self, m: Meal) -> int:
