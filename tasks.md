@@ -22,32 +22,32 @@ deployment.
 
 ## Task list
 
-- When a food is entered and no carbs/cals are entered or known at the time of entry, the food should be added
+- [done] When a food is entered and no carbs/cals are entered or known at the time of entry, the food should be added
   to a "pending update" list. This should be a list of foods that are awaiting details and can be addressed
   like a todo list. When a pending food gets required details entered, it moves to the saved foods list and
   meals referencing it should have their details updated. These pending foods can appear at the top of the
   'Foods' table.
 
-- The desktop meal response table should show dose required to cover the meal and the IOB at the start of the
+- [done] The desktop meal response table should show dose required to cover the meal and the IOB at the start of the
   meal. Currently if food is entered without carbs, no reference is given at all, even if other carbs are
   entered. This is just unnecessary obfuscation and the system should just display the dose for the known
   carbs.
 
-- The meal response table should be moved up above the Daily intake table. Rename 'IOB @ Start' to 'IOB'.
+- [done] The meal response table should be moved up above the Daily intake table. Rename 'IOB @ Start' to 'IOB'.
   Remove the Ref note. Remove the note beside the table title. Do this for all tables. Thier purpose is easily
   understood.
 
-- On the phone side of the app, the graph should show the smoothed trend like the desktop view. Also remove
+- [done] On the phone side of the app, the graph should show the smoothed trend like the desktop view. Also remove
   the axis labels but add a label somewhere showing how many hours the graph is showing, maybe along the
   bottom.
 
-- For the meal entry on the phone, move the meal name entry to just above the meal type selection. I find i
+- [done] For the meal entry on the phone, move the meal name entry to just above the meal type selection. I find i
   dont use saved meals as often and it should be a secondary focus.
 
-- The log entries on the phone app should allow me to long press on them to edit/delete them. The long press
+- [done] The log entries on the phone app should allow me to long press on them to edit/delete them. The long press
   should pop up an edit dialog with a 'Save' and 'Delete' button.
 
-- The bolus calculator does not need the long disclaimer on it any more. It should show stacked values. The
+- [done] The bolus calculator does not need the long disclaimer on it any more. It should show stacked values. The
   current correction (and its target), the calculated bolus for the entered meal, and the currently active
   IOB.
 
