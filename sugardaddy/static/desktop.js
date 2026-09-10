@@ -465,8 +465,6 @@
     // configured, so show its columns (and the caveat) only when data carries it.
     const showRef = (s.post_meal || []).some((p) => p.ref);
     document.getElementById("postmeal-table").classList.toggle("show-ref", showRef);
-    const note = document.getElementById("ref-caveat");
-    if (note) note.hidden = !showRef;
     (s.post_meal || []).forEach((p) => {
       const tr = document.createElement("tr");
       // faint "·" placeholder where there was no bolus / no active IOB

@@ -59,7 +59,7 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2>Notes <span class="muted" style="font-weight:400;font-size:13px">— context around the readings: sickness, exercise, travel</span></h2>
+      <h2>Notes</h2>
       <button class="add-btn" data-add="note">+ Add</button>
     </div>
     <table class="data-table" id="note-table">
@@ -69,8 +69,16 @@
   </section>
 
   <section class="panel">
+    <h2>Post-meal response (2h)</h2>
+    <table class="data-table" id="postmeal-table">
+      <thead><tr><th>Time</th><th>Meal</th><th>Carbs</th><th>Bolus</th><th>IOB</th><th class="ref-col">Ref</th><th class="ref-col">Δ Ref</th><th>Start</th><th>Peak</th><th>Δ Peak</th><th>→ Peak</th><th>End</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
     <div class="panel-head">
-      <h2>Daily intake <span class="muted" style="font-weight:400;font-size:13px">— whole local days, on its own range; insulin is bolus + correction only, basal excluded</span></h2>
+      <h2>Daily intake</h2>
       <div class="day-picker">
         <div class="range-presets day-presets">
           <button data-days="3">3d</button>
@@ -93,7 +101,7 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2>Foods <span class="muted" style="font-weight:400;font-size:13px">— library used to build meals; edits never change history</span></h2>
+      <h2>Foods</h2>
       <button class="add-btn" data-add="food">+ Add</button>
     </div>
     <div class="table-scroll">
@@ -106,27 +114,10 @@
 
   <section class="panel">
     <div class="panel-head">
-      <h2>Saved meals <span class="muted" style="font-weight:400;font-size:13px">— reusable plates for fast logging; live-linked to foods</span></h2>
+      <h2>Saved meals</h2>
       <button class="add-btn" id="add-template">+ Add</button>
     </div>
     <div id="templates-list" class="templates-list"></div>
-  </section>
-
-  <section class="panel">
-    <h2>Post-meal response (2h) <span class="muted" style="font-weight:400;font-size:13px">— IOB @ start is insulin still active from earlier doses; it excludes the meal's own bolus. A meal appears as soon as it is logged; its glucose columns fill in as readings arrive</span></h2>
-    <p id="ref-caveat" class="ref-caveat" hidden>
-      <strong>Ref</strong> is an <strong>experimental</strong> calculated reference from your configured
-      ISF/ICR for <em>that plate</em> — carbs plus correction, with <strong>IOB @ start deliberately
-      not deducted</strong>, so a second meal an hour after a covered one still shows what its own carbs
-      ask for. Read the two columns side by side. It is a cross-check to question,
-      <strong>not dosing advice</strong>. Δ is (your dose − reference). Hover a value for its breakdown.
-      A <strong>*</strong> means the figure was built from only some of its inputs — usually a plate
-      where not every item has a carb count — so it understates the meal and is not comparable.
-    </p>
-    <table class="data-table" id="postmeal-table">
-      <thead><tr><th>Time</th><th>Meal</th><th>Carbs</th><th>Bolus</th><th>IOB @ start</th><th class="ref-col">Ref</th><th class="ref-col">Δ Ref</th><th>Start</th><th>Peak</th><th>Δ Peak</th><th>→ Peak</th><th>End</th></tr></thead>
-      <tbody></tbody>
-    </table>
   </section>
 
   <footer class="foot"><span class="muted">v{{ version }}</span></footer>
