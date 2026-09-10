@@ -386,9 +386,12 @@
     // judgement is diagnosable, and it names the inputs it went without rather
     // than quietly treating them as zero.
     const refEl = document.getElementById("meal-ref");
-    const refVal = refEl && refEl.querySelector(".mr-fig .mr-val");
+    const refCorr = document.getElementById("mr-corr");
+    const refCorrNote = document.getElementById("mr-corr-note");
+    const refMeal = document.getElementById("mr-meal");
+    const refMealNote = document.getElementById("mr-meal-note");
+    const refTotal = document.getElementById("mr-total");
     const refIob = document.getElementById("mr-iob-val");
-    const refParts = document.getElementById("mr-parts");
     const refWhy = document.getElementById("mr-why");
     let refOff = false;   // no ISF configured: the panel doesn't exist at all
     let refTimer = null;
@@ -414,32 +417,38 @@
       return why;
     }
 
-    function renderRef(d, carbsComplete) {
+    function renderRef(d, carbs) {
       if (!refEl) return;
       if (!d.enabled) { refOff = true; refEl.hidden = true; return; }
       const r = d.ref || {};
       // A "*" marks a figure built from only some of its inputs — the same
       // convention as the desktop table and the report, so an incomplete 1.2u
       // can't be read as "barely dose here" when the carbs simply aren't in yet.
-      const why = refReasons(r.missing || [], d, carbsComplete);
+      const why = refReasons(r.missing || [], d, carbs.complete);
+      const star = why.length ? "*" : "";
       refEl.hidden = false;
       refEl.classList.toggle("mr-partial", why.length > 0);
-      refVal.textContent =
-        r.suggested_units == null ? "—" : `≈${uStr(r.suggested_units)}${why.length ? "*" : ""}`;
-      // Deliberately NOT folded into the figure beside it: a plate fully covered
-      // an hour ago would otherwise report 0 u for the carbs going in now.
-      if (refIob) refIob.textContent = r.iob_units ? uStr(r.iob_units) : "none";
 
-      const bits = [];
-      if (r.carb_units != null) bits.push(`${uStr(r.carb_units)} carbs`);
-      if (r.correction_units != null) bits.push(`${signedU(r.correction_units)} correction`);
+      // Correction, with what it is correcting from and to. Signed: below target
+      // it is negative, and it eats into the carb cover rather than vanishing.
+      refCorr.textContent = r.correction_units == null ? "—" : signedU(r.correction_units);
       if (d.glucose != null && !d.glucose_stale) {
         // Both to the precision the unit is conventionally quoted at — JSON
         // hands back 7.0 as 7, and "at 5.1, target 7" reads like two scales.
         const g = (n) => n.toFixed(d.units === "mg/dL" ? 0 : 1);
-        bits.push(`at ${g(d.glucose)}, target ${g(d.target)} ${d.units}`);
+        refCorrNote.textContent = `at ${g(d.glucose)}, target ${g(d.target)} ${d.units}`;
+      } else {
+        refCorrNote.textContent = d.glucose == null ? "no reading" : "reading too old";
       }
-      refParts.textContent = bits.join(" · ");
+
+      refMeal.textContent = r.carb_units == null ? "—" : uStr(r.carb_units);
+      refMealNote.textContent = carbs.grams == null ? "no carbs entered" : `${carbs.grams} g carbs`;
+
+      refTotal.textContent = r.suggested_units == null ? "—" : `≈${uStr(r.suggested_units)}${star}`;
+      // Deliberately NOT deducted from the figure above: a plate fully covered
+      // an hour ago would otherwise report 0 u for the carbs going in now.
+      refIob.textContent = r.iob_units ? uStr(r.iob_units) : "none";
+
       refWhy.textContent = why.length ? `* ${why.join("; ")}` : "";
     }
 
@@ -448,7 +457,7 @@
       const q = carbs.grams != null ? `?carbs=${encodeURIComponent(carbs.grams)}` : "";
       fetch(`/api/bolus-reference${q}`)
         .then((r) => r.json())
-        .then((d) => renderRef(d, carbs.complete))
+        .then((d) => renderRef(d, carbs))
         .catch(() => {});
     }
 

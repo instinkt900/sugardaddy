@@ -113,27 +113,35 @@
          docs/plans/insulin-awareness.md for why it shows its components and is
          worded as a cross-check rather than a dose. #}
       <section id="meal-ref" class="meal-ref" hidden aria-live="polite">
-        {# Two figures, side by side and never netted against each other: what
-           this plate asks for, and what is already working from earlier doses.
-           Subtracting the second from the first turned a second meal's real
-           carbs into "0 u" — see bolus.bolus_reference. #}
-        <div class="mr-top">
-          <div class="mr-fig">
-            <div class="mr-val">—</div>
-            <div class="mr-lab">for this plate</div>
+        {# Stacked, not summarised. The correction and the carb cover answer two
+           different questions, and active insulin answers a third — the total is
+           only there so the two halves above it don't have to be added in your
+           head. Active insulin is listed but NEVER deducted: netting it off
+           turned a second meal's real carbs into "0 u" (see bolus.py). #}
+        <dl class="mr-stack">
+          <div class="mr-row">
+            <dt>Correction</dt>
+            <dd id="mr-corr" class="mr-num">—</dd>
+            <dd id="mr-corr-note" class="mr-note muted"></dd>
           </div>
-          <div class="mr-fig mr-iob">
-            <div id="mr-iob-val" class="mr-val">—</div>
-            <div class="mr-lab">already active</div>
+          <div class="mr-row">
+            <dt>This plate</dt>
+            <dd id="mr-meal" class="mr-num">—</dd>
+            <dd id="mr-meal-note" class="mr-note muted"></dd>
           </div>
-        </div>
-        <div id="mr-parts" class="mr-parts muted"></div>
+          <div class="mr-row mr-total">
+            <dt>Together</dt>
+            <dd id="mr-total" class="mr-num">—</dd>
+            <dd class="mr-note muted"></dd>
+          </div>
+          <div class="mr-row mr-iob">
+            <dt>Active insulin</dt>
+            <dd id="mr-iob-val" class="mr-num">—</dd>
+            <dd class="mr-note muted">already on board, not deducted</dd>
+          </div>
+        </dl>
         <div id="mr-why" class="mr-why"></div>
-        <p class="mr-caveat muted">
-          Experimental — the formula's read on your configured ISF/ICR, to compare
-          against the dose you'd already give. It does not deduct active insulin;
-          that overlap is yours to judge. Not advice; your own call wins.
-        </p>
+        <p class="mr-caveat muted">Experimental — your configured ISF/ICR, not advice.</p>
       </section>
 
       <button type="button" id="log-meal" class="big-btn">Log meal</button>
