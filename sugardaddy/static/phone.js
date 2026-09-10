@@ -79,6 +79,11 @@
   // day is still more than enough context for "where am I heading". The desktop
   // keeps the wider windows.
   const CHART_HOURS = 12;
+  // The chart carries no tick labels, so the window it covers is said in words
+  // once, under it. Fixed for the life of the page — the span never changes,
+  // only which 12 hours it is.
+  const spanEl = document.getElementById("chart-span");
+  if (spanEl) spanEl.textContent = `last ${CHART_HOURS} hours`;
 
   function statusClass(c) {
     if (!c.has_reading) return "";
@@ -138,6 +143,11 @@
       .then((r) => r.json())
       .then((data) => {
         const g = data.glucose.map((p) => ({ x: p.t, y: p.v }));
+        // The trend with the sensor's ~30-minute ringing filtered out, same as
+        // the desktop. On a 128px-tall chart the raw trace is mostly wobble, so
+        // this is the line to read; the readings stay behind it, faint, because
+        // they are what actually happened.
+        const sm = (data.smoothed || []).map((p) => ({ x: p.t, y: p.v }));
         // Sit the dose/meal markers in a row along the foot of the chart.
         const ys = g.map((p) => p.y);
         const yMax = ys.length ? Math.max(...ys) : 0;
@@ -149,8 +159,9 @@
         }));
         if (miniChart) {
           miniChart.data.datasets[0].data = g;
-          miniChart.data.datasets[1].data = doses;
-          miniChart.data.datasets[2].data = meals;
+          miniChart.data.datasets[1].data = sm;
+          miniChart.data.datasets[2].data = doses;
+          miniChart.data.datasets[3].data = meals;
           // The window slides forward with every refresh, so re-pin it too.
           miniChart.options.scales.x.min = data.from;
           miniChart.options.scales.x.max = data.to;
@@ -159,7 +170,9 @@
         }
         miniChart = new Chart(ctx, {
           data: { datasets: [
-            { type: "line", data: g, borderColor: "#4f8cff", borderWidth: 2,
+            { type: "line", data: g, borderColor: "rgba(139,144,160,0.45)", borderWidth: 1,
+              pointRadius: 0, tension: 0.3, fill: false, parsing: false },
+            { type: "line", data: sm, borderColor: "#4f8cff", borderWidth: 2,
               pointRadius: 0, tension: 0.3, fill: false, parsing: false },
             { type: "scatter", label: "Insulin", data: doses,
               borderColor: (c) => SD.doseColor(c.raw && c.raw.kind),
@@ -176,17 +189,23 @@
               tooltip: { callbacks: { label: (c) => c.raw.label || `${c.parsed.y} ${data.units}` } },
             },
             scales: {
+              // No tick labels on either axis. The phone chart answers "what
+              // shape am I in", not "what was the number at 14:20" — the big
+              // reading above it is the number, and on a 128px canvas the ticks
+              // cost more width and height than the reading they gave back. The
+              // span they used to imply is stated once under the chart instead
+              // (#chart-span), and the shaded target band keeps the vertical
+              // scale legible without a single label.
+              //
               // Pinned to the window the API resolved — see desktop.js.
               x: { type: "linear", min: data.from, max: data.to,
-                   ticks: { color: "#8b90a0", maxTicksLimit: 6,
-                     callback: (v) => SD.hhmm(v) }, grid: { display: false } },
+                   ticks: { display: false }, grid: { display: false } },
               // Hard zero base, not suggestedMin: a low is the thing this chart
               // exists to make obvious, and a floating baseline changes how far
               // down "3.2" looks from one refresh to the next. Same fixed
               // reference point every time — see desktop.js.
               y: { min: 0, suggestedMax: SD.chartTop(data.units),
-                   ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
-                   title: { display: true, text: data.units, color: "#8b90a0" } },
+                   ticks: { display: false }, grid: { color: "#2c303c" } },
             },
           },
           plugins: [SD.targetBand(data.target_low, data.target_high)],

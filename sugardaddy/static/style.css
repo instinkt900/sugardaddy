@@ -59,6 +59,8 @@ a { color: var(--accent); text-decoration: none; }
   padding: 10px;
 }
 .chart-card.big { padding: 16px; }
+/* Stands in for the axis labels the phone chart doesn't draw. */
+.chart-span { text-align: center; font-size: 11.5px; padding-top: 4px; letter-spacing: .02em; }
 
 .tabs { display: flex; gap: 8px; }
 .tab {
