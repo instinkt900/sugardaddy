@@ -76,8 +76,9 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   `db.backfill_meal_items` fills the items that referenced it — `WHERE ... IS
   NULL` only, per column. Filling a blank completes an entry; a recorded value
   is still never touched. Carb-less plate lines are auto-registered as pending
-  foods on `POST`/`PATCH /api/meal` so they surface as a to-do at the top of the
-  desktop Foods table.
+  foods on `POST`/`PATCH /api/meal` so they surface as a to-do: at the top of the
+  desktop Foods table, and behind a chip on the phone's Meal tab that is hidden
+  outright when the queue is empty.
 - **Insulin `kind`** is `bolus | correction | basal`. For any insulin-on-board
   math, include only bolus+correction (rapid-acting); basal is a separate depot.
 

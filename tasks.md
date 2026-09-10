@@ -51,3 +51,6 @@ deployment.
   current correction (and its target), the calculated bolus for the entered meal, and the currently active
   IOB.
 
+- [done] Enter pending food details from the phone, without adding weight to the
+  interface: a self-hiding chip on the Meal tab opens a sheet of the foods
+  awaiting carbs, editable and savable there.
