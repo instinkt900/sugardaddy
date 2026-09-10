@@ -136,7 +136,14 @@ def post_meal_responses(
     When ``isf_mgdl``/``icr``/``target_mgdl`` are supplied, each row also carries
     the EXPERIMENTAL bolus reference for that meal (``ref_*``) so the dose that
     was actually given can be read beside a calculated one. Unset → the fields are
-    absent entirely and nothing about this function changes."""
+    absent entirely and nothing about this function changes.
+
+    The reference covers whatever carbs *were* logged, even on a plate where some
+    items have none: ``ref_carbs_partial`` says so, and the figure is then a floor
+    rather than an answer. Blanking it out instead only hid the arithmetic — the
+    correction half and the known carbs are both real, and a meal with 60 g logged
+    and one uncounted side is far better served by a marked figure than by a
+    dash."""
     if not readings:
         return []
     ordered = sorted(readings, key=lambda r: r.ts_utc)
@@ -210,11 +217,20 @@ def post_meal_responses(
                 target_mgdl=target_mgdl,
                 isf_mgdl_per_unit=isf_mgdl,
                 icr_g_per_unit=icr,
-                # Partial plate → unknown, not a smaller meal (see Meal.carbs_complete).
-                carbs_g=meal.total_carbs if meal.carbs_complete else None,
+                # A plate where only some items carry a carb count still gets a
+                # figure, built from the carbs that ARE known. Withholding it
+                # entirely obfuscated more than it protected: the response table
+                # went blank on the majority of real plates, including ones with
+                # substantial logged carbs beside one unlogged side dish. The
+                # figure is a floor, and `ref_carbs_partial` marks it as one so
+                # it can be shown with the same "*" the rest of the app uses.
+                carbs_g=meal.total_carbs,
                 iob_units=iob_start,
             )
             row["ref"] = ref.as_dict()
+            row["ref_carbs_partial"] = (
+                meal.total_carbs is not None and not meal.carbs_complete
+            )
             row["ref_note"] = describe(ref)
             # Signed gap: positive means the user gave MORE than the reference.
             row["ref_delta_units"] = (

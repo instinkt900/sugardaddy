@@ -130,9 +130,15 @@ class Meal:
 
         ``total_carbs`` sums the items that have one, which is right for display
         but would quietly understate a plate where only some items were logged
-        (2 items, 1 carbed reads as a confident total). Anything doing arithmetic
-        on carbs — the bolus reference in particular — should treat a partial
-        plate as unknown rather than as a smaller meal."""
+        (2 items, 1 carbed reads as a confident total), so anything doing
+        arithmetic on carbs has to know which it is looking at.
+
+        Two settled answers, not one: work that *scores* the numbers (the bolus
+        backtest, carb-ratio analysis) treats a partial plate as unknown, because
+        an understated meal would bias the result. Work that merely *shows* a
+        figure to reconcile against (the post-meal reference) uses the carbs it
+        has and marks the result as a floor — withholding it there hid real
+        arithmetic on most plates without protecting anything."""
         return bool(self.items) and all(i.carbs_g is not None for i in self.items)
 
     @property

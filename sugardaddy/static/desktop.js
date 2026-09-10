@@ -480,8 +480,13 @@
       // matching the report, so a small number can't read as "barely dose here"
       // when the carb half is simply absent.
       const miss = r.missing || [];
-      const partial = miss.length > 0;
-      const why = partial ? `incomplete — no ${miss.join(", ")} for this meal` : (p.ref_note || "");
+      // Two ways to be incomplete: an input the server had none of at all, and a
+      // plate where the carbs it did have came from only some of the items. The
+      // second still produces a figure (a floor), so it is marked, not withheld.
+      const partial = miss.length > 0 || !!p.ref_carbs_partial;
+      const gaps = miss.slice();
+      if (p.ref_carbs_partial) gaps.push("a carb count on every item");
+      const why = partial ? `incomplete — no ${gaps.join(", ")} for this meal` : (p.ref_note || "");
       const ref = r.suggested_units == null
         ? `<td class="ref-col muted" title="${esc(why)}">—</td>
            <td class="ref-col"></td>`

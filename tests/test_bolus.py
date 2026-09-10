@@ -254,11 +254,16 @@ def test_partly_carbed_plate_counts_as_unknown():
     assert "carbs" in e["ref"]["missing"]
     assert out["agreement"]["n_full_inputs"] == 0
 
+    # The response table is the exception: it shows the figure the *known* carbs
+    # ask for, flagged as partial, because a dash there hid real arithmetic on
+    # the majority of plates. The backtest above still refuses to score it.
     rows = analysis.post_meal_responses(
         [r(0, 6.9), r(3600, 7.5)], [partial], UNITS, [InsulinDose(ts_utc=T0, units=8.0)],
         isf_mgdl=ISF, icr=ICR, target_mgdl=TARGET,
     )
-    assert "carbs" in rows[0]["ref"]["missing"]
+    assert "carbs" not in rows[0]["ref"]["missing"]
+    assert rows[0]["ref_carbs_partial"] is True
+    assert rows[0]["ref"]["carb_units"] == 8.0  # 80 g logged / ICR 10, a floor
 
 
 def test_fully_carbed_plate_still_counts():
