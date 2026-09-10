@@ -59,6 +59,15 @@ a { color: var(--accent); text-decoration: none; }
   padding: 10px;
 }
 .chart-card.big { padding: 16px; }
+/* The phone chart is sized against the viewport, not its own aspect ratio.
+   Chart.js derives height from width by default, so a wider phone got a TALLER
+   chart and pushed "Log insulin" — the one control the tab exists for — under
+   the navigation bar. Height now scales with the screen it has to fit inside;
+   the clamp keeps it legible on a small phone and stops it sprawling on a tall
+   one. Paired with maintainAspectRatio:false in phone.js: Chart.js fills this
+   box, so the box must state a height. */
+.chart-box { position: relative; height: clamp(96px, 13.5vh, 150px); }
+.chart-box canvas { position: absolute; inset: 0; }
 /* Stands in for the axis labels the phone chart doesn't draw. */
 .chart-span { text-align: center; font-size: 11.5px; padding-top: 4px; letter-spacing: .02em; }
 

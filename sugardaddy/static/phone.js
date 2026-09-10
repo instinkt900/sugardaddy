@@ -184,6 +184,9 @@
           options: {
             animation: false,
             parsing: false,
+            // The .chart-box wrapper sets the height (see style.css); without
+            // this Chart.js would derive it from the width instead.
+            maintainAspectRatio: false,
             plugins: {
               legend: { display: false },
               tooltip: { callbacks: { label: (c) => c.raw.label || `${c.parsed.y} ${data.units}` } },
