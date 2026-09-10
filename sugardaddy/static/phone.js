@@ -319,7 +319,10 @@
     }
 
     function loadFoods() {
-      return fetch("/api/foods").then((r) => r.json()).then((d) => { foods = d; }).catch(() => {});
+      return fetch("/api/foods")
+        .then((r) => r.json())
+        .then((d) => { foods = d; renderPendingChip(); })
+        .catch(() => {});
     }
     function loadTemplates() {
       return fetch("/api/meal-templates").then((r) => r.json()).then((d) => { templates = d; }).catch(() => {});
@@ -551,6 +554,127 @@
         .then(() => { resetBuilder(); refreshRecent(); toast(named ? "Meal logged & saved" : "Meal logged"); })
         .catch(() => status("Could not log meal."));
     });
+
+    // ---- pending foods: the carb counts still owed ------------------------
+    // A food logged without carbs is registered in the library as pending (see
+    // web.register_pending_foods) so it can be chased up later. Chasing it up
+    // used to mean finding a desktop, which is not where the meal was logged
+    // and not where the answer is known — usually you are still holding the
+    // packet. The chip below the food entry is the whole footprint: no chip
+    // when the queue is empty, so the tab is no longer for the trouble.
+    const chip = document.getElementById("pending-chip");
+    const pendSheet = document.getElementById("pending-sheet");
+    const pendList = document.getElementById("pending-list");
+    const pendStatus = document.getElementById("pending-status");
+
+    function pendingFoods() {
+      return foods.filter((f) => f.pending);
+    }
+
+    // Fill blanks on the current plate from the library, by name. Same rule as
+    // the server's backfill: only an item that recorded *nothing* is touched.
+    function adoptKnownCarbs() {
+      const byName = new Map(foods.map((f) => [f.name.trim().toLowerCase(), f]));
+      plate.forEach((it) => {
+        if (it.carbs_g != null) return;
+        const f = byName.get((it.name || "").trim().toLowerCase());
+        if (!f || f.carbs_g == null) return;
+        it.carbs_g = f.carbs_g;
+        if (it.calories == null) it.calories = f.calories;
+        if (it.food_id == null) it.food_id = f.id;
+      });
+      renderPlate();
+    }
+
+    function renderPendingChip() {
+      if (!chip) return;
+      const n = pendingFoods().length;
+      chip.hidden = n === 0;
+      chip.textContent = `${n} food${n === 1 ? "" : "s"} awaiting carbs`;
+    }
+
+    function pendingRow(f) {
+      const li = document.createElement("li");
+      li.className = "e-item";
+      li.dataset.id = f.id;
+      li.innerHTML =
+        `<span class="pf-name">${esc(f.name)}</span>` +
+        `<span class="ei-nums">` +
+        `<input type="number" class="pf-carbs" step="1" min="0" inputmode="decimal" placeholder="carbs (g)" aria-label="Carbs for ${esc(f.name)}">` +
+        `<input type="number" class="pf-cal" step="1" min="0" inputmode="decimal" placeholder="cal" value="${f.calories ?? ""}" aria-label="Calories for ${esc(f.name)}">` +
+        `<button type="button" class="ei-del" title="Delete this food">✕</button></span>`;
+      // A pending food is sometimes just a typo that made it onto a plate. It
+      // can go — deleting the library row leaves the logged meal untouched,
+      // since items are snapshots.
+      li.querySelector(".ei-del").addEventListener("click", () => {
+        if (!confirm(`Delete "${f.name}" from the food library?`)) return;
+        fetch(`/api/foods/${f.id}`, { method: "DELETE" })
+          .then(() => loadFoods())
+          .then(() => { li.remove(); if (!pendingFoods().length) closePending(); })
+          .catch(() => { pendStatus.textContent = "Could not delete that."; });
+      });
+      return li;
+    }
+
+    function openPending() {
+      pendList.innerHTML = "";
+      pendingFoods().forEach((f) => pendList.appendChild(pendingRow(f)));
+      pendStatus.textContent = "";
+      pendSheet.hidden = false;
+    }
+
+    function closePending() {
+      pendSheet.hidden = true;
+      pendList.innerHTML = "";
+    }
+
+    function savePending() {
+      // Only rows that were actually filled in are sent — the rest stay pending,
+      // which is the honest answer for a food whose carbs are still unknown.
+      const edits = [...pendList.querySelectorAll("li[data-id]")]
+        .map((li) => ({
+          id: +li.dataset.id,
+          carbs_g: numOrNull(li.querySelector(".pf-carbs").value),
+          calories: numOrNull(li.querySelector(".pf-cal").value),
+        }))
+        .filter((e) => e.carbs_g != null);
+      if (!edits.length) { pendStatus.textContent = "Enter a carb count on at least one."; return; }
+      pendStatus.textContent = "Saving…";
+      Promise.all(
+        edits.map((e) =>
+          fetch(`/api/foods/${e.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ carbs_g: e.carbs_g, calories: e.calories }),
+          }).then((r) => (r.ok ? r.json() : {})),
+        ),
+      )
+        .then((results) => {
+          // How much history that just completed is the point of the exercise,
+          // so it is reported rather than left as a silent side effect.
+          const filled = results.reduce((n, r) => n + (r.filled_items || 0), 0);
+          return loadFoods().then(() => {
+            closePending();
+            // The plate being built can be holding one of these right now — the
+            // usual case, in fact, since that is what put it on the queue. Take
+            // the new figures into it so the totals and the bolus reference
+            // stop reading it as a carb-less item.
+            adoptKnownCarbs();
+            toast(filled ? `Saved · ${filled} logged item${filled === 1 ? "" : "s"} filled` : "Saved");
+          });
+        })
+        .catch(() => { pendStatus.textContent = "Could not save those."; });
+    }
+
+    if (chip) {
+      chip.addEventListener("click", openPending);
+      document.getElementById("pending-save").addEventListener("click", savePending);
+      document.getElementById("pending-cancel").addEventListener("click", closePending);
+      pendSheet.addEventListener("click", (e) => { if (e.target === pendSheet) closePending(); });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !pendSheet.hidden) closePending();
+      });
+    }
 
     loadFoods();
     loadTemplates();

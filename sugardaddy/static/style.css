@@ -209,6 +209,23 @@ textarea { font-family: inherit; resize: vertical; width: 100%; }
 .additem-nums input { width: 100%; }
 .add-plate-btn { flex: 0 0 auto; min-height: 46px; padding: 0 18px; }
 
+/* The pending-food chip: quiet, amber-ruled like the reference panel, and gone
+   entirely when the queue is empty (the [hidden] attribute does that on its
+   own — nothing here may set display). */
+.pending-chip {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--high);
+  background: rgba(255, 176, 32, .08);
+  color: var(--high);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.pending-chip::before { content: "◷ "; }
+/* Name over the numbers, matching the meal rows in the edit sheet. */
+.pf-name { font-weight: 600; font-size: 14px; }
+
 /* Experimental bolus reference, sat directly above the log button. Deliberately
    quieter than .big-btn: the amber rule and card read as "here is a figure to
    weigh", not as the primary action. Never styled to look decided. */

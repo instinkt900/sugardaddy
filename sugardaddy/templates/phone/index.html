@@ -80,6 +80,12 @@
             <button type="button" id="add-to-plate" class="combo-btn add-plate-btn">Add</button>
           </div>
         </div>
+
+        {# The to-do queue of foods logged without a carb count. Hidden outright
+           when there is nothing in it, so it costs the tab no room on the days
+           it has nothing to say — the only reason it can sit on a screen this
+           long at all. #}
+        <button type="button" id="pending-chip" class="pending-chip" hidden></button>
       </div>
 
       {# The plate comes first: building it is what every meal entry does. Naming
@@ -164,6 +170,22 @@
   </section>
 
   {% include "partials/recent.html" %}
+
+  {# The pending-food queue, opened from the chip on the Meal tab. Its own sheet
+     rather than a tab of its own: this is a chore you do when the chip says
+     there is one, not a place to navigate to. #}
+  <div id="pending-sheet" class="sheet" hidden>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="pending-title">
+      <h3 id="pending-title">Foods awaiting carbs</h3>
+      <p class="field-note muted">Filling one in also completes the meals already logged with it.</p>
+      <ul id="pending-list" class="e-items"></ul>
+      <p id="pending-status" class="km-status muted"></p>
+      <div class="sheet-actions">
+        <button type="button" id="pending-save" class="big-btn">Save</button>
+      </div>
+      <button type="button" id="pending-cancel" class="sheet-cancel">Close</button>
+    </div>
+  </div>
 
   {# Long-press an entry in the list above to edit or delete it (phone.js). The
      sheet is built per entry type at open time — the shell is all that lives in
