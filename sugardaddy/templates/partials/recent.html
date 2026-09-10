@@ -1,5 +1,6 @@
 <div id="recent" class="recent">
-  <h2>Recent (24h)</h2>
+  {# data-kind/data-id are what phone.js long-presses to open the editor. #}
+  <h2>Recent (24h) <span class="muted press-hint">long-press to edit</span></h2>
   {% if not recent.doses and not recent.meals and not recent.notes %}
     <p class="muted">Nothing logged yet.</p>
   {% endif %}
@@ -7,7 +8,7 @@
     <h3>Insulin</h3>
     <ul class="entry-list">
       {% for d in recent.doses %}
-        <li>
+        <li data-kind="insulin" data-id="{{ d.id }}">
           <span class="entry-time">{{ d.local }}</span>
           <span class="entry-main">{{ d.units }}u <span class="tag">{{ d.kind }}</span></span>
           {% if d.note %}<span class="entry-note">{{ d.note }}</span>{% endif %}
@@ -19,7 +20,7 @@
     <h3>Meals</h3>
     <ul class="entry-list">
       {% for m in recent.meals %}
-        <li>
+        <li data-kind="meal" data-id="{{ m.id }}">
           <span class="entry-time">{{ m.local }}</span>
           <span class="entry-main">
             {% if m.meal_type %}<span class="tag">{{ m.meal_type|capitalize }}</span>{% endif %}
@@ -36,7 +37,7 @@
     <h3>Notes</h3>
     <ul class="entry-list">
       {% for n in recent.notes %}
-        <li>
+        <li data-kind="note" data-id="{{ n.id }}">
           <span class="entry-time">{{ n.local }}</span>
           <span class="entry-text">{{ n.text }}</span>
         </li>

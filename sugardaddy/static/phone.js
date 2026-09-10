@@ -214,6 +214,15 @@
       .catch(() => {});
   }
 
+  // Re-render the recent list from the server partial, so an entry logged or
+  // edited here shows exactly what was stored rather than what was typed.
+  function refreshRecent() {
+    fetch("/api/recent").then((r) => r.text()).then((html) => {
+      const el = document.getElementById("recent");
+      if (el) el.outerHTML = html;
+    }).catch(() => {});
+  }
+
   // Assigned by the meal builder below; a no-op when the builder isn't on the
   // page so the refresh cycle doesn't need to know whether it exists.
   let updateMealRef = () => {};
@@ -475,13 +484,6 @@
       renderPlate();
     }
 
-    function refreshRecent() {
-      fetch("/api/recent").then((r) => r.text()).then((html) => {
-        const el = document.getElementById("recent");
-        if (el) el.outerHTML = html;
-      }).catch(() => {});
-    }
-
     // -- food combobox: pick prefills macros; typing marks the item ad-hoc --
     makeCombo(
       foodEl, foodList, () => foods,
@@ -544,6 +546,207 @@
     loadFoods();
     loadTemplates();
     renderPlate();
+  }
+
+  // ================= edit / delete a logged entry ============================
+  // Everything in the recent list is editable in place: long-press an entry and
+  // the sheet opens on it, with Save and Delete. Long-press rather than a row of
+  // pencil icons because this list is read far more often than it is corrected,
+  // and three buttons per row on a phone is a list you can't scan — and rather
+  // than tap, because a tap on a mis-hit row must not open a dialog over the
+  // number you were reading.
+  //
+  // One sheet, built per entry type at open time. Meals get their whole plate:
+  // a wrong carb count is the correction actually worth making, and sending the
+  // user to the desktop for it is how it doesn't get made.
+  const LONG_PRESS_MS = 450;
+  const PRESS_SLOP_PX = 10;  // past this the gesture was a scroll, not a press
+
+  const sheet = document.getElementById("entry-sheet");
+  const sheetTitle = document.getElementById("sheet-title");
+  const sheetBody = document.getElementById("sheet-body");
+  const sheetStatus = document.getElementById("sheet-status");
+  let editing = null;  // {kind, id, items?} while the sheet is open
+
+  // The kinds/meal types the server rendered into the log forms — read off those
+  // selects rather than re-templated, so there is one list per concept.
+  function optionsFrom(sel, selected) {
+    const src = document.querySelector(sel);
+    if (!src) return "";
+    return [...src.options]
+      .map((o) => `<option value="${esc(o.value)}"${o.value === (selected || "") ? " selected" : ""}>${esc(o.textContent)}</option>`)
+      .join("");
+  }
+
+  function sheetSay(msg) {
+    sheetStatus.textContent = msg;
+  }
+
+  function closeSheet() {
+    editing = null;
+    sheet.hidden = true;
+    sheetBody.innerHTML = "";
+    sheetSay("");
+  }
+
+  function tsField(input) {
+    return `<label class="sf">Time
+      <input type="datetime-local" class="e-ts" value="${esc(input)}" aria-label="Time"></label>`;
+  }
+
+  // -- meal plate rows (the same shape as the builder's, editable) --
+  function mealItemRow(it) {
+    const li = document.createElement("li");
+    li.className = "e-item";
+    li.innerHTML =
+      `<input type="text" class="ei-name" value="${esc(it.name || "")}" placeholder="food" aria-label="Food">` +
+      `<span class="ei-nums">` +
+      `<input type="number" class="ei-carbs" step="1" min="0" inputmode="decimal" value="${it.carbs_g ?? ""}" placeholder="carbs" aria-label="Carbs (g)">` +
+      `<input type="number" class="ei-cal" step="1" min="0" inputmode="decimal" value="${it.calories ?? ""}" placeholder="cal" aria-label="Calories">` +
+      `<input type="number" class="ei-count" step="0.5" min="0" inputmode="decimal" value="${it.count ?? 1}" aria-label="Count">` +
+      `<button type="button" class="ei-del" title="Remove">✕</button></span>`;
+    li.querySelector(".ei-del").addEventListener("click", () => li.remove());
+    return li;
+  }
+
+  function readMealItems() {
+    return [...sheetBody.querySelectorAll(".e-item")]
+      .map((li) => ({
+        // food_id is dropped on purpose: an item renamed here is a different
+        // food, and stale provenance is worse than none (see models.MealItem).
+        name: li.querySelector(".ei-name").value.trim(),
+        carbs_g: numOrNull(li.querySelector(".ei-carbs").value),
+        calories: numOrNull(li.querySelector(".ei-cal").value),
+        count: parseFloat(li.querySelector(".ei-count").value) || 1,
+      }))
+      .filter((it) => it.name);
+  }
+
+  function buildSheet(kind, e) {
+    if (kind === "insulin") {
+      sheetTitle.textContent = "Edit dose";
+      sheetBody.innerHTML =
+        `<label class="sf">Units<input type="number" class="e-units" step="0.5" min="0" inputmode="decimal" value="${e.units}"></label>` +
+        `<label class="sf">Type<select class="e-kind">${optionsFrom("#tab-insulin select[name=kind]", e.kind)}</select></label>` +
+        tsField(e.input) +
+        `<label class="sf">Note<input type="text" class="e-note" value="${esc(e.note || "")}" placeholder="optional note"></label>`;
+    } else if (kind === "note") {
+      sheetTitle.textContent = "Edit note";
+      sheetBody.innerHTML =
+        `<label class="sf">Note<textarea class="e-text" rows="3">${esc(e.text || "")}</textarea></label>` +
+        tsField(e.input);
+    } else {
+      sheetTitle.textContent = "Edit meal";
+      sheetBody.innerHTML =
+        `<ul class="e-items"></ul>` +
+        `<button type="button" class="combo-btn e-additem">+ Item</button>` +
+        `<label class="sf">Name<input type="text" class="e-name" value="${esc(e.name || "")}" placeholder="optional name"></label>` +
+        `<label class="sf">Type<select class="e-type">${optionsFrom("#meal-type", e.meal_type)}</select></label>` +
+        tsField(e.input) +
+        `<label class="sf">Note<input type="text" class="e-mnote" value="${esc(e.note || "")}" placeholder="optional note"></label>`;
+      const list = sheetBody.querySelector(".e-items");
+      (e.items || []).forEach((it) => list.appendChild(mealItemRow(it)));
+      sheetBody.querySelector(".e-additem").addEventListener("click", () => {
+        list.appendChild(mealItemRow({}));
+      });
+    }
+    // The canonical datetime field is swapped for 24-hour boxes here as well —
+    // a 12-hour "00 PM" would move a dose half a day (see SD.timeField).
+    SD.timeFields(sheetBody);
+  }
+
+  function openEditor(kind, id) {
+    // The list is server-rendered HTML, so the values behind it come from the
+    // API rather than being scraped back out of the markup.
+    fetch("/api/entries?hours=24")
+      .then((r) => r.json())
+      .then((d) => {
+        const bucket = { insulin: "doses", meal: "meals", note: "notes" }[kind];
+        const entry = (d[bucket] || []).find((x) => x.id === id);
+        if (!entry) { toast("That entry is gone."); refreshRecent(); return; }
+        editing = { kind, id };
+        buildSheet(kind, entry);
+        sheet.hidden = false;
+      })
+      .catch(() => toast("Couldn't open that entry."));
+  }
+
+  function editPayload() {
+    const ts = sheetBody.querySelector(".e-ts");
+    const q = (sel) => sheetBody.querySelector(sel);
+    if (editing.kind === "insulin") {
+      return {
+        ts: ts.value, units: numOrNull(q(".e-units").value),
+        kind: q(".e-kind").value, note: q(".e-note").value.trim(),
+      };
+    }
+    if (editing.kind === "note") {
+      return { ts: ts.value, text: q(".e-text").value.trim() };
+    }
+    return {
+      ts: ts.value, name: q(".e-name").value.trim(), meal_type: q(".e-type").value,
+      note: q(".e-mnote").value.trim(), items: readMealItems(),
+    };
+  }
+
+  function saveEdit() {
+    const body = editPayload();
+    if (editing.kind === "insulin" && !(body.units > 0)) { sheetSay("Enter the units."); return; }
+    if (editing.kind === "note" && !body.text) { sheetSay("A note needs some words."); return; }
+    if (editing.kind === "meal" && !body.items.length) { sheetSay("A meal needs at least one item."); return; }
+    const { kind, id } = editing;
+    fetch(`/api/${kind}/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    })
+      .then((r) => { if (!r.ok) throw new Error(); closeSheet(); refreshRecent(); refresh(); toast("Saved"); })
+      .catch(() => sheetSay("Could not save that."));
+  }
+
+  function deleteEdit() {
+    if (!confirm("Delete this entry?")) return;
+    const { kind, id } = editing;
+    fetch(`/api/${kind}/${id}`, { method: "DELETE" })
+      .then((r) => { if (!r.ok) throw new Error(); closeSheet(); refreshRecent(); refresh(); toast("Deleted"); })
+      .catch(() => sheetSay("Could not delete that."));
+  }
+
+  if (sheet) {
+    document.getElementById("sheet-save").addEventListener("click", saveEdit);
+    document.getElementById("sheet-delete").addEventListener("click", deleteEdit);
+    document.getElementById("sheet-cancel").addEventListener("click", closeSheet);
+    // Backdrop tap closes; a tap inside the panel must not.
+    sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && editing) closeSheet(); });
+
+    // Delegated from the document: the recent list is replaced wholesale by every
+    // HTMX swap and refresh, so a listener bound to it would last one post.
+    let pressTimer = null, pressAt = null;
+    const entryAt = (t) => t && t.closest && t.closest("#recent li[data-id]");
+    const cancelPress = () => { clearTimeout(pressTimer); pressTimer = null; pressAt = null; };
+
+    document.addEventListener("pointerdown", (e) => {
+      const li = entryAt(e.target);
+      if (!li) return;
+      pressAt = { x: e.clientX, y: e.clientY };
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        // Haptic where it exists: the press has no visible progress, so without
+        // it a long-press feels like nothing happened until the sheet appears.
+        if (navigator.vibrate) navigator.vibrate(15);
+        openEditor(li.dataset.kind, +li.dataset.id);
+      }, LONG_PRESS_MS);
+    });
+    document.addEventListener("pointermove", (e) => {
+      // A press that travels is a scroll. Cancel rather than fight the page.
+      if (!pressAt) return;
+      if (Math.abs(e.clientX - pressAt.x) > PRESS_SLOP_PX ||
+          Math.abs(e.clientY - pressAt.y) > PRESS_SLOP_PX) cancelPress();
+    });
+    ["pointerup", "pointercancel", "scroll"].forEach((ev) =>
+      document.addEventListener(ev, cancelPress, true));
+    // Android fires its own text-selection/context menu on a long press, which
+    // would land on top of the sheet.
+    document.addEventListener("contextmenu", (e) => { if (entryAt(e.target)) e.preventDefault(); });
   }
 
   // ================= push notifications ======================================

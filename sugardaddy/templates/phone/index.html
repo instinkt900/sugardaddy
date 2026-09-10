@@ -157,6 +157,22 @@
 
   {% include "partials/recent.html" %}
 
+  {# Long-press an entry in the list above to edit or delete it (phone.js). The
+     sheet is built per entry type at open time — the shell is all that lives in
+     the markup, so there is one dialog rather than three. #}
+  <div id="entry-sheet" class="sheet" hidden>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <h3 id="sheet-title">Edit entry</h3>
+      <div id="sheet-body"></div>
+      <p id="sheet-status" class="km-status muted"></p>
+      <div class="sheet-actions">
+        <button type="button" id="sheet-delete" class="big-btn danger">Delete</button>
+        <button type="button" id="sheet-save" class="big-btn">Save</button>
+      </div>
+      <button type="button" id="sheet-cancel" class="sheet-cancel">Cancel</button>
+    </div>
+  </div>
+
   <section class="notify">
     <button type="button" id="notify-toggle" class="combo-btn" disabled>Checking…</button>
     <p class="notify-hint muted" id="notify-hint">Checking whether this device can be reminded…</p>
