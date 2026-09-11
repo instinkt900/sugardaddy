@@ -291,6 +291,17 @@
     return { open, close };
   }
 
+  // The food library, loaded by the plate builder and read by the edit sheet's
+  // item rows too — both offer the same matches.
+  let foods = [];
+
+  function fmtMacros(carbs, cal) {
+    const bits = [];
+    if (carbs != null) bits.push(`${carbs}g`);
+    if (cal != null) bits.push(`${cal}cal`);
+    return bits.join(" · ");
+  }
+
   // ================= meal plate builder ======================================
   const nameEl = document.getElementById("meal-name");
   if (nameEl) {
@@ -311,7 +322,6 @@
     const logBtn = document.getElementById("log-meal");
     const statusEl = document.getElementById("meal-status");
 
-    let foods = [];
     let templates = [];
     let plate = [];           // [{food_id, name, carbs_g, calories, count}]
     let pickedFoodId = null;  // set when a library food is chosen; cleared on manual edit
@@ -329,13 +339,6 @@
     }
     function loadTemplates() {
       return fetch("/api/meal-templates").then((r) => r.json()).then((d) => { templates = d; }).catch(() => {});
-    }
-
-    function fmtMacros(carbs, cal) {
-      const bits = [];
-      if (carbs != null) bits.push(`${carbs}g`);
-      if (cal != null) bits.push(`${cal}cal`);
-      return bits.join(" · ");
     }
 
     function renderPlate() {
@@ -735,13 +738,27 @@
     const li = document.createElement("li");
     li.className = "e-item";
     li.innerHTML =
-      `<input type="text" class="ei-name" value="${esc(it.name || "")}" placeholder="food" aria-label="Food">` +
+      `<div class="combo-field">` +
+      `<input type="text" class="ei-name" value="${esc(it.name || "")}" placeholder="food — type to match the library" aria-label="Food"` +
+      ` autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false">` +
+      `<ul class="combo-list" role="listbox" hidden></ul></div>` +
       `<span class="ei-nums">` +
       `<input type="number" class="ei-carbs" step="1" min="0" inputmode="decimal" value="${it.carbs_g ?? ""}" placeholder="carbs" aria-label="Carbs (g)">` +
       `<input type="number" class="ei-cal" step="1" min="0" inputmode="decimal" value="${it.calories ?? ""}" placeholder="cal" aria-label="Calories">` +
       `<input type="number" class="ei-count" step="0.5" min="0" inputmode="decimal" value="${it.count ?? 1}" aria-label="Count">` +
       `<button type="button" class="ei-del" title="Remove">✕</button></span>`;
     li.querySelector(".ei-del").addEventListener("click", () => li.remove());
+    // Same library matches as the builder: a pick fills the row's macros, which
+    // is how a wrong or missing carb count gets fixed without retyping it.
+    makeCombo(
+      li.querySelector(".ei-name"), li.querySelector(".combo-list"), () => foods,
+      (f) => {
+        li.querySelector(".ei-name").value = f.name;
+        li.querySelector(".ei-carbs").value = f.carbs_g != null ? f.carbs_g : "";
+        li.querySelector(".ei-cal").value = f.calories != null ? f.calories : "";
+      },
+      (f) => fmtMacros(f.carbs_g, f.calories),
+    );
     return li;
   }
 
