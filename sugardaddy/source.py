@@ -17,6 +17,43 @@ from sugardaddy.models import GlucoseReading
 
 log = logging.getLogger("sugardaddy.source")
 
+# pylibrelinkup calls requests.get/post with no timeout. A LibreLinkUp server that keeps a connection open
+# without answering then blocks the poller thread forever: the web UI stays up but readings stop (seen
+# 2026-10-14, about 15 min until a restart). With a timeout the call fails, latest() raises SourceError, and
+# the ingest loop reconnects on its next cycle. (connect, read) seconds.
+HTTP_TIMEOUT: tuple[float, float] = (10.0, 30.0)
+
+
+class _TimeoutRequests:
+    """Stands in for the `requests` module inside pylibrelinkup and adds a default timeout to each call."""
+
+    def __init__(self, requests_module):
+        self._requests = requests_module
+
+    def __getattr__(self, name):
+        return getattr(self._requests, name)
+
+    def _with_timeout(self, method: str, *args, **kwargs):
+        kwargs.setdefault("timeout", HTTP_TIMEOUT)
+        return getattr(self._requests, method)(*args, **kwargs)
+
+    def get(self, *args, **kwargs):
+        return self._with_timeout("get", *args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self._with_timeout("post", *args, **kwargs)
+
+    def request(self, *args, **kwargs):
+        return self._with_timeout("request", *args, **kwargs)
+
+
+def _install_http_timeout() -> None:
+    """Give pylibrelinkup's HTTP calls a timeout. Safe to call more than once."""
+    import pylibrelinkup.pylibrelinkup as client_module
+
+    if not isinstance(client_module.requests, _TimeoutRequests):
+        client_module.requests = _TimeoutRequests(client_module.requests)
+
 
 class SourceError(RuntimeError):
     pass
@@ -69,6 +106,7 @@ class LibreLinkUpSource(GlucoseSource):
             from pylibrelinkup import APIUrl, PyLibreLinkUp
         except ImportError as exc:  # pragma: no cover
             raise SourceError("pylibrelinkup is not installed") from exc
+        _install_http_timeout()
 
         if not self.cfg.email or not self.cfg.password:
             raise SourceError(
