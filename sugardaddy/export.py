@@ -40,6 +40,9 @@ from sugardaddy.db import Database
 from sugardaddy.models import InsulinDose, Meal
 
 log = logging.getLogger("sugardaddy.export")
+# httpx logs every request at INFO, which is a line a minute from this loop alone.
+# A pass that sent something logs its own summary; failures still surface as warnings.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 DB_LABEL = "sugardaddy"
 BATCH = 5000  # lines per request; a full backfill is ~1.5k readings a day
