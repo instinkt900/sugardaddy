@@ -189,6 +189,36 @@ If Home Assistant already holds months of Libre history, import it once.
 Home Assistant stores Australian sensors in mmol/L, and the import converts them
 to mg/dL. Pass `--unit mg/dL` when the sensor already reports mg/dL.
 
+## Optional: export to VictoriaMetrics
+
+The app can copy its timeline to [VictoriaMetrics](https://victoriametrics.com/),
+so Grafana can show glucose beside other data. It is off by default.
+
+1. Under `[victoriametrics]` in `config.toml`, set `url` to the server's base URL
+   and `enabled = true`.
+2. Rebuild or restart the container. The first sync sends the whole history.
+   After that, each sync (every `interval_seconds`) sends the new readings and
+   any dose or meal that was added, changed or deleted.
+
+Metrics, each with the label `db="sugardaddy"`, stamped at the time of the event:
+
+| metric | labels | value |
+|--------|--------|-------|
+| `sugardaddy_glucose_mgdl`, `_mmol`, `_trend` | — | one sample per reading |
+| `sugardaddy_insulin_units` | `kind`, `id` | one sample per dose |
+| `sugardaddy_meal_logged`, `_items`, `_items_without_carbs`, `_carbs_g`, `_calories` | `meal_type`, `id` | one sample per meal. `carbs_g` and `calories` are left out when no item has one. When `items_without_carbs` is above 0, `carbs_g` is a lower limit |
+
+Each dose and meal has its own series (`id`), so an edit or a delete can remove
+the old value. In Grafana, use a range function such as
+`sum_over_time(sugardaddy_insulin_units[$__interval])`, so that each event shows
+at its own time only.
+
+`sugardaddy export -c config.toml` runs one sync by hand, also when `enabled` is
+false. `--full` deletes the exported series and sends everything again.
+
+VictoriaMetrics has no login by default. This is health data: keep the server on
+a network you trust, or put an authenticating proxy in front of it.
+
 ## Command line
 
 Run `sugardaddy <command>` after a package install. Otherwise run
@@ -202,6 +232,7 @@ sugardaddy init-db  -c config.toml            # create the SQLite schema, then e
 sugardaddy report   -c config.toml [--days N] # retrospective analysis (text or --json)
 sugardaddy notify   -c config.toml [--dry-run] # push the basal reminder, if one is due
 sugardaddy vapid-keys                         # mint a Web Push signing key
+sugardaddy export   -c config.toml [--full]   # one sync to VictoriaMetrics
 ```
 
 Add `-v` for debug logs.
@@ -392,6 +423,14 @@ Signing key: `SUGARDADDY_VAPID_PRIVATE_KEY`, from the environment only.
 
 Token: `SUGARDADDY_HA_TOKEN`, from the environment only.
 
+`[victoriametrics]` (the optional export — see [Optional: export to VictoriaMetrics](#optional-export-to-victoriametrics))
+| key | default | meaning |
+|-----|---------|---------|
+| `enabled` | false | run the sync in the background while the server runs |
+| `url` | — | VictoriaMetrics base URL, for example `http://192.0.2.20:8428` |
+| `interval_seconds` | 60 | time between syncs (15 or more) |
+| `timeout_seconds` | 10 | HTTP timeout for each request |
+
 ## Common operations
 
 **Change credentials.** Edit `docker/.env`, then recreate the container. A plain
@@ -420,7 +459,7 @@ cd docker && docker compose logs -f
 
 ```
 sugardaddy/
-  cli.py         entrypoint: serve | ingest | backfill | init-db | report | notify
+  cli.py         entrypoint: serve | ingest | backfill | init-db | report | notify | export
   config.py      one TOML → typed config (secrets from env, never in TOML)
   constants.py   unit conversion, trend arrows, default target range
   models.py      typed rows (readings, doses, notes, foods, meals, templates)
@@ -433,6 +472,7 @@ sugardaddy/
   analysis.py    pure retrospective functions (no I/O, no clock, no config)
   report.py      the `report` command: window resolution, text and JSON output
   notify.py      Web Push app server and the basal reminder
+  export.py      optional sync to VictoriaMetrics (InfluxDB line protocol)
   web.py         FastAPI app: phone and desktop routes, JSON API, /healthz
   templates/     Jinja: base, phone/, desktop/, partials/
   static/        vendored htmx and Chart.js, CSS, phone.js, desktop.js

@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from sugardaddy import __version__, notify
+from sugardaddy import __version__, export, notify
 from sugardaddy.analysis import (
     daily_breakdown,
     daily_intake,
@@ -983,6 +983,13 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
                 notify.start_background(cfg, db, tz)
                 log.info(
                     "basal reminder started (checking every %ds)", cfg.notify.poll_seconds
+                )
+            # Also independent: the export reads only the database.
+            if cfg.victoriametrics.enabled:
+                export.start_background(cfg, db)
+                log.info(
+                    "VictoriaMetrics export started (every %ds)",
+                    cfg.victoriametrics.interval_seconds,
                 )
 
     app.state.config = cfg

@@ -164,6 +164,21 @@ class BackfillConfig:
 
 
 @dataclass
+class VictoriaMetricsConfig:
+    """Optional export of glucose, doses and meals to VictoriaMetrics (export.py).
+
+    ``enabled`` switches the background sync in `serve`; the app runs the same
+    without it. ``url`` is the server's base URL — it also serves the one-shot
+    `sugardaddy export` command, which works whether or not the loop is on.
+    """
+
+    enabled: bool = False
+    url: str = ""
+    interval_seconds: int = 60
+    timeout_seconds: float = 10.0
+
+
+@dataclass
 class Config:
     librelink: LibreLinkConfig
     database: DatabaseConfig
@@ -172,6 +187,7 @@ class Config:
     prescription: PrescriptionConfig = field(default_factory=PrescriptionConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
     backfill: BackfillConfig = field(default_factory=BackfillConfig)
+    victoriametrics: VictoriaMetricsConfig = field(default_factory=VictoriaMetricsConfig)
     # Env-only: the VAPID signing key. Anyone holding it can push to every
     # subscribed device, so it must never land in a file that could be committed.
     vapid_private_key: str = ""
@@ -253,6 +269,11 @@ def load_config(path: str | os.PathLike) -> Config:
     backfill = BackfillConfig(**bf_raw)
     backfill.token = os.environ.get("SUGARDADDY_HA_TOKEN", "").strip()
 
+    victoriametrics = VictoriaMetricsConfig(
+        **_known(raw.get("victoriametrics", {}), VictoriaMetricsConfig)
+    )
+    _check_victoriametrics(victoriametrics)
+
     cfg = Config(
         librelink=librelink,
         database=database,
@@ -261,6 +282,7 @@ def load_config(path: str | os.PathLike) -> Config:
         prescription=prescription,
         notify=notify,
         backfill=backfill,
+        victoriametrics=victoriametrics,
     )
     cfg.vapid_private_key = os.environ.get("SUGARDADDY_VAPID_PRIVATE_KEY", "").strip()
     return cfg
@@ -311,3 +333,19 @@ def _check_notify(notify: NotifyConfig) -> None:
         raise ConfigError("[notify] basal_leniency_hours must be >= 0")
     if notify.repeat_hours < 0:
         raise ConfigError("[notify] repeat_hours must be >= 0 (0 = notify once per cycle)")
+
+
+def _check_victoriametrics(vm: VictoriaMetricsConfig) -> None:
+    """Validate [victoriametrics] when it is switched on. Like the notifier, a
+    broken export fails quietly — Grafana just stops getting data — so a URL that
+    could never work is caught at startup instead."""
+    if not vm.enabled:
+        return
+    if not vm.url.startswith(("http://", "https://")):
+        raise ConfigError(
+            f"[victoriametrics] url must be an http:// or https:// base URL (got {vm.url!r})"
+        )
+    if vm.interval_seconds < 15:
+        raise ConfigError("[victoriametrics] interval_seconds must be >= 15")
+    if vm.timeout_seconds <= 0:
+        raise ConfigError("[victoriametrics] timeout_seconds must be > 0")

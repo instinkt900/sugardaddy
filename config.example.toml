@@ -118,3 +118,18 @@ repeat_hours = 0.5
 ha_url = "http://192.0.2.10:8123"
 ha_entity = "sensor.librelink_glucose"
 # HA long-lived token comes from SUGARDADDY_HA_TOKEN, not this file.
+
+[victoriametrics]
+# Optional: copy glucose readings, insulin doses and meals to VictoriaMetrics, for
+# Grafana. Off by default; the app works the same without it. The first sync sends
+# the whole history, then each sync sends what changed (edits and deletes too).
+# `sugardaddy export -c config.toml [--full]` runs one sync by hand.
+#
+# VictoriaMetrics has no login by default. This is health data: keep the server
+# on a network you trust, or put an authenticating proxy in front of it.
+enabled = false
+# Base URL of a single-node VictoriaMetrics (it needs /write and the
+# /api/v1/admin/tsdb/delete_series endpoint).
+url = "http://192.0.2.20:8428"
+interval_seconds = 60
+timeout_seconds = 10

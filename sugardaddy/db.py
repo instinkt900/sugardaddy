@@ -297,6 +297,17 @@ class Database:
             ).fetchall()
         return [_reading(r) for r in rows]
 
+    def readings_after_id(self, after_id: int, limit: int) -> list[GlucoseReading]:
+        """Readings in insertion order, past a row id. Rows are never edited or
+        deleted and the id only grows, so this is a cursor that also catches a
+        late-arriving older reading (the recent sync inserts behind the live poll)."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM glucose_readings WHERE id > ? ORDER BY id LIMIT ?",
+                (after_id, limit),
+            ).fetchall()
+        return [_reading(r) for r in rows]
+
     def reading_count(self) -> int:
         with self.connect() as conn:
             return conn.execute("SELECT COUNT(*) FROM glucose_readings").fetchone()[0]

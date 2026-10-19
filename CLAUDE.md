@@ -35,7 +35,7 @@ are allowed to go and the hard safety boundary around them.
 
 ```
 sugardaddy/            Python package
-  cli.py               entrypoint: serve | ingest | backfill | init-db | report
+  cli.py               entrypoint: serve | ingest | backfill | init-db | report | notify | export
   __main__.py          `python -m sugardaddy`
   web.py               FastAPI app factory, all routes, request parsing, tz helpers
   db.py                SQLite schema + Database wrapper (short-lived connections)
@@ -46,6 +46,7 @@ sugardaddy/            Python package
   notify.py            Web Push app server (own VAPID key) + the basal-reminder pass/loop
   source.py            GlucoseSource seam (keeps app independent of LibreLinkUp specifics)
   backfill.py          one-shot history seed from Home Assistant REST
+  export.py            optional sync to VictoriaMetrics ([victoriametrics], off by default)
   analysis.py          PURE retrospective functions (summarize, post_meal_responses,
                        variability, daily_breakdown, hourly_profile, low_episodes,
                        insulin_summary, daily_intake, day_coverage,
@@ -142,7 +143,16 @@ sugardaddy init-db  -c config.toml            # create schema and exit
 sugardaddy report   -c config.toml [--days N] [--db PATH] [--json]
 sugardaddy notify   -c config.toml [--dry-run]  # one basal-reminder pass
 sugardaddy vapid-keys                           # mint the Web Push signing key
+sugardaddy export   -c config.toml [--full]     # one VictoriaMetrics sync (--full resends all)
 ```
+
+The **export** (`export.py`) mirrors the DB into VictoriaMetrics for Grafana.
+Glucose rows are append-only, so a row-id cursor (`export.glucose_id` in
+`notify_state`) is enough. Doses and meals can be edited or deleted, so each has
+its own series (`id` label) and a fingerprint of what was sent
+(`export.events`); a pass deletes the series of anything changed or gone, then
+writes the new line. It never touches the web layer, and a failed pass moves no
+state, so the next pass retries.
 
 `report` is deterministic analysis only (TIR/GMI, variability/CV, per-day and
 per-hour breakdowns, grouped low episodes, insulin summary, carb coverage,
@@ -173,7 +183,7 @@ spells this out because the opposite reading fabricates a clinical claim.
 
 One TOML (`config.toml`; template is `config.example.toml`). Sections:
 `[librelink]`, `[database]`, `[web]` (host/port/timezone/units/target_low/high),
-`[insulin]`, `[notify]`, `[backfill]`. `config.py` uses dataclasses and `_known()`
+`[insulin]`, `[prescription]`, `[notify]`, `[backfill]`, `[victoriametrics]`. `config.py` uses dataclasses and `_known()`
 so an **unknown TOML key fails loudly**. **Secrets are never in the TOML** — they
 come from env only: `SUGARDADDY_LIBRE_EMAIL`, `SUGARDADDY_LIBRE_PASSWORD`,
 `SUGARDADDY_VAPID_PRIVATE_KEY` (push signing), `SUGARDADDY_HA_TOKEN` (backfill

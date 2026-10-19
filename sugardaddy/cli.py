@@ -7,6 +7,7 @@
   sugardaddy report    — print a retrospective analysis (text or --json)
   sugardaddy notify    — push the basal reminder if one is due
   sugardaddy vapid-keys — mint a Web Push signing key
+  sugardaddy export    — sync to VictoriaMetrics once (--full resends all history)
 """
 
 from __future__ import annotations
@@ -60,6 +61,11 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("vapid-keys", help="mint a Web Push signing key for notifications")
 
+    p_export = sub.add_parser("export", help="sync glucose, doses and meals to VictoriaMetrics once")
+    p_export.add_argument("-c", "--config", required=True, help="path to config.toml")
+    p_export.add_argument("--full", action="store_true",
+                          help="delete the exported series and resend the whole history")
+
     args = parser.parse_args(argv)
     _setup_logging(args.verbose)
 
@@ -95,6 +101,10 @@ def main(argv: list[str] | None = None) -> int:
         from sugardaddy.notify import run_vapid_keys
 
         return run_vapid_keys()
+    if args.command == "export":
+        from sugardaddy.export import run_export
+
+        return run_export(args.config, full=args.full)
 
     parser.print_help(sys.stderr)
     return 2
