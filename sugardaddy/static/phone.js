@@ -383,7 +383,9 @@
       todo = d;
       const chip = $("#todo-chip");
       chip.hidden = !d.length;
-      chip.textContent = `${d.length} food${d.length === 1 ? "" : "s"} still need carbs`;
+      // "recent" because the phone asks for the last 14 days only; the full
+      // backlog is on the desktop's Library view.
+      chip.textContent = d.length === 1 ? "1 recent food still needs carbs" : `${d.length} recent foods still need carbs`;
     }).catch(() => {});
   }
   $("#todo-chip").addEventListener("click", openTodo);
