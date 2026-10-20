@@ -1,7 +1,8 @@
 # Plan: phone for the patient, desktop for the carer
 
-**Status:** experiment on the `redesign` branch, deployed to a local staging
-instance. Nothing here is on `master` until it has been lived with.
+**Status:** built on the `redesign` branch and running on a local staging
+instance (see "Staging" below). Nothing here is on `master` until it has been
+lived with.
 
 ## The problem, boiled down
 
@@ -149,3 +150,12 @@ with large, rounded numerals, generous spacing and soft surfaces instead of
 outlined boxes. Glucose state is shown by colour on the hero card and nowhere
 else, so colour keeps its meaning. The palette is defined once in
 `style.css :root` and shared by both surfaces.
+
+## Staging
+
+`deploy/staging.sh` runs the branch on this machine from the gitignored
+`.staging/` directory: a snapshot of the live DB plus a config with no
+LibreLinkUp, notify or VictoriaMetrics sections, so it can't poll the account
+or write anywhere but its own copy. Glucose is frozen at the snapshot time.
+Refresh the snapshot with the same `sqlite3` backup used to make it, then
+restart.

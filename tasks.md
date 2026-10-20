@@ -24,9 +24,9 @@ deployment.
 
 Redesign session (branch `redesign`, plan in docs/plans/redesign.md):
 
-- Touch fixes: pick on a completed tap, not pointerdown; sheets ignore the finger that opened them.
-- Data layer: favourites, settings (dose presets), one-off foods, missing-carbs by item, quick-carb estimates, explicit saved-meal updates, meal-moment bolus reference + meal insight.
-- New visual design system (tokens, light/dark following the system).
-- Phone rewrite: status home, bottom action bar, tap-first insulin/food/note flows, entry detail with the meal's reference and response.
-- Desktop restructure: sectioned console (Overview, Logbook, Meals, Library, Phone), favourites + usage in the library, missing-carbs to-do, reference on existing meals, phone setup panel.
-- Local staging instance on this machine from a live-DB snapshot.
+- [done] Touch fixes: pick on a completed tap, not pointerdown; sheets ignore the finger that opened them.
+- [done] Data layer: favourites, settings (dose presets), one-off foods, missing-carbs by item, quick-carb estimates, explicit saved-meal updates, meal-moment bolus reference + meal insight.
+- [done] New visual design system (tokens, light/dark following the system).
+- [done] Phone rewrite: status home, bottom action bar, tap-first insulin/food/note flows, entry detail with the meal's reference and response.
+- [done] Desktop restructure: sectioned console (Overview, Logbook, Meals, Library, Phone), favourites + usage in the library, missing-carbs to-do, reference on existing meals, phone setup panel.
+- [done] Local staging instance on this machine from a live-DB snapshot.

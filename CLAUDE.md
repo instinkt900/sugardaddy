@@ -76,16 +76,43 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   `carbs_g IS NULL`, never stored), and when its details first arrive
   `db.backfill_meal_items` fills the items that referenced it — `WHERE ... IS
   NULL` only, per column. Filling a blank completes an entry; a recorded value
-  is still never touched. Carb-less plate lines are auto-registered as pending
-  foods on `POST`/`PATCH /api/meal` so they surface as a to-do: at the top of the
-  desktop Foods table, and behind a chip on the phone's Meal tab that is hidden
-  outright when the queue is empty.
+  is still never touched.
+- **Logging is a record; reuse is an explicit choice** (see
+  `docs/plans/redesign.md`). A typed plate line that isn't in the library is a
+  **one-off**: it is logged on the meal and does *not* join the library unless
+  the phone sends `keep: true`. Carb-less lines are no longer auto-registered as
+  pending foods — the to-do lives on the items (`db.missing_carb_items`, grouped
+  by name) and `POST /api/missing-carbs` fills every blank line with that name
+  (`IS NULL` only, via `db.backfill_items_by_name`). Likewise logging a named
+  meal **never** rewrites the saved meal of that name unless the body carries
+  `save_template: true` (the phone's "Also update the saved meal" switch).
+  Quick-carb estimates are plate lines with `tags = "estimate"`.
+- `foods.favourite` / `meal_templates.favourite` mark the phone's shortcuts;
+  `settings` (key/value JSON) holds `phone.dose_presets`. Both are set on the
+  desktop's Library / Phone views.
 - **Insulin `kind`** is `bolus | correction | basal`. For any insulin-on-board
   math, include only bolus+correction (rapid-acting); basal is a separate depot.
 
 ## Web routes (all defined in `web.py`)
 
 - Pages: `GET /` (phone), `GET /desktop`, `GET /healthz`, `GET /manifest.webmanifest`, `GET /sw.js`
+- **Phone** (`phone.js`): a status home (glucose hero, mini chart, active
+  insulin + last basal, today's timeline) and a bottom bar of three flows —
+  Insulin, Food, Note — each a full-screen sheet finished with taps (steppers,
+  preset chips, saved-meal tiles, food chips; search and keypad as fallback).
+  Tapping a timeline entry opens a read-only detail (a meal's doses, response
+  and reference) with Edit/Delete. Touch rules: act on `click`, never
+  `pointerdown`; sheets go through `openSheet()` (history entry per sheet, so
+  the back gesture closes it; `SD.guardOpen` swallows the opening press). The
+  meal flow's optional dose is **never prefilled from the reference**.
+- **Desktop** (`desktop.js`): views Overview / Logbook / Meals / Library /
+  Phone (hash-routed). The meal editor shows the reference for existing meals
+  too, evaluated at the meal's own moment.
+- `GET /api/shortcuts` (phone's one-tap meals/foods/dose chips: favourites,
+  then most eaten in 30 days), `GET`/`PUT /api/settings/dose-presets` (unset =
+  learned from 90 days via `analysis.dose_presets`), `GET /api/missing-carbs
+  [?days=N]` + `POST` (fill by name), `GET /api/meal/{id}/insight` (one meal's
+  doses, post-meal row and reference)
 - Read APIs: `GET /api/{current,timeline,entries,stats,recent,foods,meal-templates}`
   plus `GET /api/daily?days=N` — the per-day intake rollup, on its OWN
   midnight-aligned window (deliberately not the chart's range, which can end
@@ -95,15 +122,16 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   glucose). Covers **that plate only**: carbs + correction, with **IOB reported
   beside the figure, never subtracted from it** — netting it off made a second
   meal's real carbs read as 0 u. Returns `{"enabled": false}` and nothing else
-  when no ISF is configured. The phone shows it stacked — correction (with the
+  when no ISF is configured. With `meal_id=ID` it is evaluated at that meal's
+  own moment instead of now (`analysis.meal_moment` — the same glucose/IOB/bolus
+  definition `post_meal_responses` replays), for fixing a past plate. The phone shows it stacked — correction (with the
   glucose/target behind it), the plate's carb cover, their sum, then active
   insulin below the rule and outside it
 - Write APIs: `POST /api/{insulin,meal,note,foods,meal-templates}`;
   `PATCH`/`DELETE /api/{insulin,meal,note,foods,meal-templates}/{id}`.
   `/api/insulin` and `/api/note` are form posts (the phone's HTMX tabs) and
   answer with the recent partial when `HX-Request` is set; the rest are JSON.
-  The phone reaches the `PATCH`/`DELETE` routes too: **long-pressing** an entry
-  in its recent list opens an edit sheet (meals including the whole plate)
+  The phone reaches the `PATCH`/`DELETE` routes from an entry's detail sheet
 - **Notes** are free-text context events (`{ts, text}` — sickness, exercise, a
   bad night): stamp plus words, no categories. They ride along in
   `/api/{timeline,entries,recent}`, show in the phone's recent list, and on the
@@ -111,6 +139,10 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   `report` / the review skill (see below)
 - Push: `GET /api/push/key`, `POST /api/push/{subscribe,unsubscribe,test}`
   (`/api/push/test` is the fastest way to prove a device's push chain works)
+- Styling: one palette in `style.css :root`, light/dark following the device;
+  canvas code reads tokens via `SD.tok()`. Font is vendored Nunito
+  (`static/fonts/`, OFL). The bolus reference panel is one shared
+  implementation (`SD.refMarkup` / `SD.renderRef`) used by both UIs.
 - The service worker (`sw.js`) is **network-first**, so code/template/static
   changes roll out on reload once deployed. It also carries the `push` /
   `notificationclick` handlers; bump `CACHE` when changing it.

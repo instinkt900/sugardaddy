@@ -1,6 +1,7 @@
 <div id="recent" class="recent">
-  {# data-kind/data-id are what phone.js long-presses to open the editor. #}
-  <h2>Recent (24h) <span class="muted press-hint">long-press to edit</span></h2>
+  {# Only answered to HTMX form posts now (the phone renders its own timeline
+     from /api/entries); kept so /api/insulin and /api/note stay HTMX-usable. #}
+  <h2>Recent (24h)</h2>
   {% if not recent.doses and not recent.meals and not recent.notes %}
     <p class="muted">Nothing logged yet.</p>
   {% endif %}
