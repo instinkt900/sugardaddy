@@ -9,7 +9,10 @@
 #   .staging/config.toml     a config with NO [librelink] credentials, [notify]
 #                            or [victoriametrics] — staging must never poll the
 #                            LibreLinkUp account (two clients log each other
-#                            out) or write anywhere but its own copy
+#                            out) or write anywhere but its own copy. It also
+#                            runs with SUGARDADDY_NO_OUTBOUND=1, which keeps the
+#                            reminder and export off even if the snapshot's
+#                            desktop settings switch them on.
 #
 # Runs from the repo's editable install, so a restart picks up code changes —
 # no image to rebuild. A transient systemd user unit keeps it alive after the
@@ -29,7 +32,11 @@ start() {
     echo "refusing: $CFG has a [notify] or [victoriametrics] section" >&2; exit 1
   fi
   # -u strips any credentials that happen to be in this shell's environment.
+  # NO_OUTBOUND matters as much as the config check above: settings edited on
+  # the desktop live in the DB, so a fresh snapshot carries the live instance's
+  # overrides — including an export switched on. This forces it off regardless.
   systemd-run --user --unit="$UNIT" --collect --working-directory="$REPO" \
+    --setenv=SUGARDADDY_NO_OUTBOUND=1 \
     env -u SUGARDADDY_LIBRE_EMAIL -u SUGARDADDY_LIBRE_PASSWORD -u SUGARDADDY_VAPID_PRIVATE_KEY \
     "$REPO/.venv/bin/sugardaddy" serve -c "$CFG"
   # Same rule as install-server.sh: a reply without a `readings` count is some

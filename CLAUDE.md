@@ -47,6 +47,8 @@ sugardaddy/            Python package
   source.py            GlucoseSource seam (keeps app independent of LibreLinkUp specifics)
   backfill.py          one-shot history seed from Home Assistant REST
   export.py            optional sync to VictoriaMetrics ([victoriametrics], off by default)
+  settings.py          desktop-edited overrides over the TOML (LiveConfig, history, NO_OUTBOUND)
+  csvio.py             CSV export/import per kind (glucose, insulin, meals, notes)
   analysis.py          PURE retrospective functions (summarize, post_meal_responses,
                        variability, daily_breakdown, hourly_profile, low_episodes,
                        insulin_summary, daily_intake, day_coverage,
@@ -212,6 +214,25 @@ on a day means nobody wrote one, not that nothing happened — the review skill
 spells this out because the opposite reading fabricates a clinical claim.
 
 ## Configuration
+
+**Desktop-edited settings override the TOML** (`settings.py`). The file gives
+defaults and bootstrap; anything saved in the desktop's Settings view is stored
+in the DB (`settings` key `config.overrides`) and wins, with every change logged
+in `settings_history`. The web app and background loops hold one
+`settings.LiveConfig` (attribute access forwards to the current effective
+Config, so edits apply without a restart — read through `cfg` each time, never
+cache a sub-object across a wait). CLI commands use `settings.load_effective`,
+and `report --db X` reads X's overrides, so a review runs on the numbers the app
+used. Never editable from the UI: secrets (env only — the DB is copied around)
+and bootstrap (DB path, host, port). `SUGARDADDY_NO_OUTBOUND=1` forces the
+reminder and the VictoriaMetrics export off regardless of overrides; staging
+sets it because a prod snapshot carries prod's overrides. The notify and export
+loops always run (idle while off); the ingest loop reconnects on a region or
+patient change. Desktop actions: VictoriaMetrics test/sync/resend, a one-off
+Home Assistant history import (token pasted per import, never stored), and CSV
+export/import per kind (`csvio.py`: local ISO time with offset plus `ts_utc`;
+meals one row per item; imports dry-run first and skip existing rows, so
+re-importing is a no-op).
 
 One TOML (`config.toml`; template is `config.example.toml`). Sections:
 `[librelink]`, `[database]`, `[web]` (host/port/timezone/units/target_low/high),

@@ -30,3 +30,4 @@ Redesign session (branch `redesign`, plan in docs/plans/redesign.md):
 - [done] Phone rewrite: status home, bottom action bar, tap-first insulin/food/note flows, entry detail with the meal's reference and response.
 - [done] Desktop restructure: sectioned console (Overview, Logbook, Meals, Library, Phone), favourites + usage in the library, missing-carbs to-do, reference on existing meals, phone setup panel.
 - [done] Local staging instance on this machine from a live-DB snapshot.
+- [done] Settings on the desktop: DB overrides over config.toml with history, live-applied; VictoriaMetrics/Home Assistant actions; CSV import/export.

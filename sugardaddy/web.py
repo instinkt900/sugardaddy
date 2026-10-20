@@ -16,12 +16,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from sugardaddy import __version__, export, notify
+from sugardaddy import __version__, backfill, csvio, export, notify
 from sugardaddy.analysis import (
     daily_breakdown,
     daily_intake,
@@ -35,7 +35,8 @@ from sugardaddy.analysis import (
     summarize,
 )
 from sugardaddy.bolus import bolus_reference
-from sugardaddy.config import Config, load_config
+from sugardaddy.config import Config, ConfigError, load_config
+from sugardaddy.settings import LiveConfig
 from sugardaddy.iob import active_activity, active_iob, activity_phase, is_rapid
 from sugardaddy.constants import INSULIN_KINDS, MEAL_TYPES, to_display, trend_arrow
 from sugardaddy.db import Database
@@ -140,15 +141,30 @@ def _tz(cfg: Config) -> timezone | ZoneInfo:
 
 
 def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
-    cfg = load_config(config_path)
-    db = Database(cfg.database.path)
+    base = load_config(config_path)
+    db = Database(base.database.path)
     db.init_db()
-    tz = _tz(cfg)
+    # The file's values with the desktop's overrides on top, re-read on every
+    # access — see settings.LiveConfig. Everything below, and the background
+    # loops, hold this one object, so a saved setting applies without a restart.
+    cfg = LiveConfig(base, db)
 
-    # Derived once at startup: "" means notifications are off or misconfigured,
-    # which the phone's toggle reads as "unavailable" rather than as an error.
-    vapid_public_key = notify.public_key(cfg)
-    if cfg.notify.enabled and not vapid_public_key:
+    def tz():
+        return _tz(cfg)
+
+    # "" means notifications are off or misconfigured, which the phone's toggle
+    # reads as "unavailable" rather than as an error. Derived per request (the
+    # switch can be flipped from the desktop) but cached per key.
+    _vapid_cache: dict = {}
+
+    def vapid_public_key() -> str:
+        k = (cfg.notify.enabled, cfg.vapid_private_key)
+        if k not in _vapid_cache:
+            _vapid_cache.clear()
+            _vapid_cache[k] = notify.public_key(cfg)
+        return _vapid_cache[k]
+
+    if cfg.notify.enabled and not vapid_public_key():
         log.warning("[notify] is enabled but no usable VAPID key — push is disabled")
 
     templates = Jinja2Templates(directory=str(_HERE / "templates"))
@@ -175,16 +191,16 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             return now_epoch()
         dt = datetime.fromisoformat(ts_str)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=tz)
+            dt = dt.replace(tzinfo=tz())
         return int(dt.timestamp())
 
     def local_str(ts: int, fmt: str = "%d/%m/%y %H:%M") -> str:
         """Display stamp for tables/lists — day-first, matching the AU locale the
         app is set up for. Distinct from local_input(), which must stay ISO."""
-        return datetime.fromtimestamp(ts, tz).strftime(fmt)
+        return datetime.fromtimestamp(ts, tz()).strftime(fmt)
 
     def local_input(ts: int) -> str:
-        return datetime.fromtimestamp(ts, tz).strftime("%Y-%m-%dT%H:%M")
+        return datetime.fromtimestamp(ts, tz()).strftime("%Y-%m-%dT%H:%M")
 
     # --- serialization ---------------------------------------------------
 
@@ -827,8 +843,9 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             days = 7
         days = max(1, min(days, 365))  # a year of rows is already unreadable
         now = now_epoch()
-        start = day_window_start(now, tz, days)
-        rows = daily_intake(db.meals_between(start, now), db.doses_between(start, now), tz)
+        zone = tz()
+        start = day_window_start(now, zone, days)
+        rows = daily_intake(db.meals_between(start, now), db.doses_between(start, now), zone)
         # Glucose for the same days comes from daily_breakdown rather than a second
         # rollup here: it already buckets by local day with the same key, so the two
         # line up by construction (pinned by a test) and there is no new maths to
@@ -841,11 +858,11 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
                 cfg.target_low_mgdl,
                 cfg.target_high_mgdl,
                 cfg.web.units,
-                tz,
+                zone,
             )
         }
-        coverage = day_coverage(readings, tz)
-        today = datetime.fromtimestamp(now, tz).strftime("%Y-%m-%d")
+        coverage = day_coverage(readings, zone)
+        today = datetime.fromtimestamp(now, zone).strftime("%Y-%m-%d")
         for row in rows:
             # Day-first label, stamped here for the same reason as `local` above —
             # analysis.py stays free of display formatting.
@@ -1132,6 +1149,124 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         ok = db.delete_meal_template(template_id)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
+    # --- settings (desktop) -------------------------------------------------
+
+    @app.get("/api/settings")
+    def get_settings():
+        return cfg.view()
+
+    @app.put("/api/settings")
+    async def put_settings(request: Request):
+        """Save ``{section: {field: value}}``. All or nothing: the whole result is
+        validated before anything is stored, and a 400 says what was wrong."""
+        body = await request.json()
+        try:
+            cfg.update(body.get("changes") or {})
+        except ConfigError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return cfg.view()
+
+    @app.post("/api/settings/reset")
+    async def reset_settings(request: Request):
+        """Drop overrides (``{"keys": ["insulin.isf", …]}``) back to the file."""
+        body = await request.json()
+        try:
+            cfg.reset(list(body.get("keys") or []))
+        except ConfigError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return cfg.view()
+
+    # --- import / export actions -------------------------------------------
+
+    def _vm_client():
+        vmc = cfg.victoriametrics
+        if not vmc.url:
+            return None
+        return export.VictoriaMetrics(vmc.url, vmc.timeout_seconds)
+
+    @app.post("/api/actions/victoriametrics")
+    async def vm_action(request: Request):
+        """``{"action": "test" | "sync" | "resend"}``. Test reaches the server's
+        /health; sync runs one pass now; resend wipes what was exported and sends
+        the whole history again (the CLI's ``export --full``). Refused on a
+        no-outbound instance (staging), whatever the settings say."""
+        from sugardaddy.settings import no_outbound
+
+        action = (await request.json()).get("action")
+        if no_outbound():
+            return JSONResponse({"error": "outbound connections are disabled on this instance"}, status_code=409)
+        vm = _vm_client()
+        if vm is None:
+            return JSONResponse({"error": "set the server URL first"}, status_code=400)
+
+        def run():
+            if action == "test":
+                import httpx
+
+                r = httpx.get(cfg.victoriametrics.url.rstrip("/") + "/health",
+                              timeout=cfg.victoriametrics.timeout_seconds)
+                return {"ok": r.status_code == 200, "status": r.status_code, "body": r.text[:100]}
+            if action == "resend":
+                export.reset(db, vm)
+            return export.sync(db, vm)
+
+        if action not in ("test", "sync", "resend"):
+            return JSONResponse({"error": "unknown action"}, status_code=400)
+        try:
+            return await asyncio.to_thread(run)
+        except Exception as exc:  # ExportError, httpx errors: report, don't 500
+            return JSONResponse({"error": str(exc)}, status_code=502)
+
+    @app.post("/api/actions/ha-import")
+    async def ha_import(request: Request):
+        """One-off glucose history import from Home Assistant. The token comes
+        in the request (or SUGARDADDY_HA_TOKEN) and is used once, never stored —
+        see settings.py for why secrets stay out of the DB."""
+        body = await request.json()
+        bf = cfg.backfill
+        token = (body.get("token") or "").strip() or bf.token
+        if not bf.ha_url or not bf.ha_entity:
+            return JSONResponse({"error": "set the Home Assistant URL and entity first"}, status_code=400)
+        if not token:
+            return JSONResponse({"error": "paste a Home Assistant long-lived token"}, status_code=400)
+        days = max(1, min(int(_num(body.get("days"), 90)), 3650))
+        unit = body.get("unit") if body.get("unit") in ("mmol/L", "mg/dL") else cfg.web.units
+        try:
+            return await asyncio.to_thread(
+                backfill.import_history, db, bf.ha_url, bf.ha_entity, token, days, unit
+            )
+        except Exception as exc:
+            return JSONResponse({"error": f"Home Assistant request failed: {exc}"}, status_code=502)
+
+    @app.get("/api/export/{kind}.csv")
+    def export_csv(kind: str, request: Request):
+        """CSV download of one kind. No range = everything ever logged."""
+        if kind not in csvio.KINDS:
+            return JSONResponse({"error": "unknown kind"}, status_code=404)
+        q = request.query_params
+        start = _opt_int(q.get("from")) or 0
+        end = _opt_int(q.get("to")) or now_epoch()
+        body = csvio.export_csv(db, kind, start, end, tz())
+        stamp = datetime.fromtimestamp(now_epoch(), tz()).strftime("%Y%m%d")
+        return Response(
+            body,
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="sugardaddy-{kind}-{stamp}.csv"'},
+        )
+
+    @app.post("/api/import/{kind}")
+    async def import_csv(kind: str, request: Request, file: UploadFile, dry_run: bool = True):
+        """Import a CSV of one kind. ``dry_run`` (the default) only reports what
+        would happen; the desktop shows that, then repeats with dry_run=false."""
+        if kind not in csvio.KINDS:
+            return JSONResponse({"error": "unknown kind"}, status_code=404)
+        raw = await file.read()
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return JSONResponse({"error": "the file isn't UTF-8 text"}, status_code=400)
+        return await asyncio.to_thread(csvio.import_csv, db, kind, text, tz(), dry_run=dry_run)
+
     # --- push subscriptions ----------------------------------------------
 
     @app.get("/api/push/key")
@@ -1140,9 +1275,10 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
 
         503 rather than an empty key so the phone can tell "push isn't set up on
         this server" apart from "this browser can't do push"."""
-        if not vapid_public_key:
+        key = vapid_public_key()
+        if not key:
             return JSONResponse({"error": "push not configured"}, status_code=503)
-        return {"key": vapid_public_key}
+        return {"key": key}
 
     @app.post("/api/push/subscribe")
     async def push_subscribe(request: Request):
@@ -1171,7 +1307,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         """Send a throwaway notification to every subscribed device — the quickest
         way to prove the whole chain (VAPID signing, push service, service worker)
         works without waiting for a basal to actually go unlogged."""
-        if not vapid_public_key:
+        if not vapid_public_key():
             return JSONResponse({"error": "push not configured"}, status_code=503)
         payload = {
             "title": "Sugar Daddy",
@@ -1197,19 +1333,19 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
                     "glucose ingestion disabled; manual logging still works"
                 )
             # Deliberately independent of ingestion: the basal reminder reads only
-            # the dose log, so it works with no glucose feed at all.
-            if vapid_public_key and cfg.notify.poll_seconds > 0:
-                notify.start_background(cfg, db, tz)
-                log.info(
-                    "basal reminder started (checking every %ds)", cfg.notify.poll_seconds
-                )
-            # Also independent: the export reads only the database.
-            if cfg.victoriametrics.enabled:
-                export.start_background(cfg, db)
-                log.info(
-                    "VictoriaMetrics export started (every %ds)",
-                    cfg.victoriametrics.interval_seconds,
-                )
+            # the dose log, so it works with no glucose feed at all. It runs
+            # whenever a signing key exists and idles while switched off, so the
+            # desktop's on/off needs no restart.
+            if cfg.vapid_private_key:
+                notify.start_background(cfg, db)
+                log.info("basal reminder loop started (%s)", "on" if cfg.notify.enabled else "off for now")
+            # Also independent: the export reads only the database. Same idea —
+            # always running, idle until switched on.
+            export.start_background(cfg, db)
+            log.info(
+                "VictoriaMetrics export loop started (%s)",
+                "on" if cfg.victoriametrics.enabled else "off for now",
+            )
 
     app.state.config = cfg
     app.state.db = db

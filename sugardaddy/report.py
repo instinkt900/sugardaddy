@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sugardaddy import __version__, analysis
-from sugardaddy.config import load_config
 from sugardaddy.db import Database
 
 
@@ -480,7 +479,12 @@ def run_report(
     days: int = 14,
     as_json: bool = False,
 ) -> int:
-    cfg = load_config(config_path)
+    # The DB's own settings overrides (ISF, targets, …) are applied — read from
+    # the DB being analysed — so a review runs on the numbers the app was using,
+    # not on whatever this machine's copy of the TOML says.
+    from sugardaddy.settings import load_effective
+
+    cfg = load_effective(config_path, db_path)
     db = Database(db_path or cfg.database.path)
     tzinfo = _tz(cfg.web.timezone)
     now_utc = int(datetime.now(timezone.utc).timestamp())

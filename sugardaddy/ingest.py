@@ -14,7 +14,7 @@ import logging
 import threading
 import time
 
-from sugardaddy.config import Config, load_config
+from sugardaddy.config import Config
 from sugardaddy.db import Database
 from sugardaddy.source import GlucoseSource, SourceError, build_source
 
@@ -43,9 +43,16 @@ def poll_latest(db: Database, source: GlucoseSource) -> bool:
 
 
 def ingest_loop(cfg: Config, db: Database, stop: threading.Event | None = None) -> None:
-    """Run the poll loop until `stop` is set (or forever if None)."""
-    source = build_source(cfg.librelink)
-    interval = max(15.0, cfg.librelink.poll_interval_seconds)
+    """Run the poll loop until `stop` is set (or forever if None).
+
+    ``cfg`` may be a live config (settings.LiveConfig): the interval is re-read
+    every cycle, and a change of region or patient builds a fresh source and
+    re-seeds, since that is a different account endpoint or a different person.
+    """
+    def ident():
+        return (cfg.librelink.region, cfg.librelink.patient_id)
+
+    source, source_for = build_source(cfg.librelink), ident()
     did_initial_sync = False
 
     def sleep(seconds: float) -> bool:
@@ -56,6 +63,10 @@ def ingest_loop(cfg: Config, db: Database, stop: threading.Event | None = None) 
         return stop.wait(seconds)
 
     while True:
+        if ident() != source_for:
+            log.info("LibreLinkUp settings changed; reconnecting")
+            source, source_for = build_source(cfg.librelink), ident()
+            did_initial_sync = False
         try:
             if not did_initial_sync:
                 # Seed recent history (graph() lags ~20 min), then immediately
@@ -74,7 +85,7 @@ def ingest_loop(cfg: Config, db: Database, stop: threading.Event | None = None) 
             log.error("unexpected ingest error: %s", exc, exc_info=log.isEnabledFor(logging.DEBUG))
             did_initial_sync = False
 
-        if sleep(interval):
+        if sleep(max(15.0, cfg.librelink.poll_interval_seconds)):
             log.info("ingest loop stopping")
             return
 
@@ -90,7 +101,9 @@ def start_background(cfg: Config, db: Database) -> tuple[threading.Thread, threa
 
 
 def run_ingest(config_path: str, once: bool = False) -> int:
-    cfg = load_config(config_path)
+    from sugardaddy.settings import load_effective
+
+    cfg = load_effective(config_path)
     db = Database(cfg.database.path)
     db.init_db()
 

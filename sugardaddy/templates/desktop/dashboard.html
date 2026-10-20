@@ -19,6 +19,7 @@
       <button type="button" data-view="meals">Meals</button>
       <button type="button" data-view="library">Library <span id="lib-badge" class="nav-badge" hidden></span></button>
       <button type="button" data-view="phone">Phone</button>
+      <button type="button" data-view="settings">Settings</button>
     </nav>
     <a class="phone-link" href="/">Phone view</a>
   </header>
@@ -185,6 +186,64 @@
         <div><h3>Food buttons</h3><div id="preview-foods" class="preview-chips"></div></div>
       </div>
     </section>
+  </div>
+
+  <!-- ===================== Settings ===================== -->
+  <div class="view" data-view="settings" hidden>
+    <div id="outbound-banner" class="banner" hidden>This instance has outbound connections switched off
+      (SUGARDADDY_NO_OUTBOUND) — the reminder and the export stay off whatever is set here.</div>
+    <p class="panel-note muted">Values saved here are stored in the database and override <code>config.toml</code>;
+      “↺ file” puts one back to the file's value. Changes apply straight away.</p>
+    <div id="settings-sections" class="settings-grid"></div>
+
+    <section class="panel">
+      <h2>Data</h2>
+      <p class="panel-note muted">CSV, one file per kind. Times are local with their UTC offset, plus <code>ts_utc</code>.
+        Importing checks the file first and shows what it would add; rows already in the database are skipped,
+        so importing the same file twice changes nothing.</p>
+      <div class="data-grid">
+        <div>
+          <h3>Export</h3>
+          <div class="export-row">
+            <label class="inline"><input type="radio" name="export-span" value="all" checked> Everything</label>
+            <label class="inline"><input type="radio" name="export-span" value="range"> The selected range</label>
+          </div>
+          <div class="btn-row" id="export-buttons">
+            <button class="add-btn" data-kind="glucose">Glucose</button>
+            <button class="add-btn" data-kind="insulin">Insulin</button>
+            <button class="add-btn" data-kind="meals">Meals</button>
+            <button class="add-btn" data-kind="notes">Notes</button>
+          </div>
+        </div>
+        <div>
+          <h3>Import</h3>
+          <div class="btn-row">
+            <select id="import-kind" aria-label="What the file holds">
+              <option value="insulin">Insulin</option><option value="meals">Meals</option>
+              <option value="notes">Notes</option><option value="glucose">Glucose</option>
+            </select>
+            <input type="file" id="import-file" accept=".csv,text/csv">
+            <button class="add-btn" id="import-check">Check file</button>
+          </div>
+          <div id="import-result" class="import-result" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="desk-grid">
+      <section class="panel">
+        <h2>Fixed at startup</h2>
+        <p class="panel-note muted">Needed before the database can be opened, so they stay in <code>config.toml</code>.</p>
+        <dl id="bootstrap-list" class="kv"></dl>
+        <h2 class="sub">Secrets</h2>
+        <p class="panel-note muted">Environment only — never stored in the database, which gets copied (reviews, staging).</p>
+        <ul id="secrets-list" class="secret-list"></ul>
+      </section>
+      <section class="panel">
+        <h2>Change history</h2>
+        <ul id="settings-history" class="history-list"></ul>
+      </section>
+    </div>
   </div>
 
   <footer class="foot"><span class="muted">v{{ version }} · not a medical device</span></footer>

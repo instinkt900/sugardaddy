@@ -34,7 +34,7 @@ import time
 
 import httpx
 
-from sugardaddy.config import Config, load_config
+from sugardaddy.config import Config
 from sugardaddy.constants import mgdl_to_mmol
 from sugardaddy.db import Database
 from sugardaddy.models import InsulinDose, Meal
@@ -153,10 +153,16 @@ class VictoriaMetrics:
 # --- sync ------------------------------------------------------------------
 
 
+# The loop and the desktop's "sync now" can run a pass at the same moment; both
+# move the same cursor, so passes are serialised.
+_PASS = threading.Lock()
+
+
 def sync(db: Database, vm: VictoriaMetrics) -> dict:
     """One pass: new glucose readings, then dose/meal changes. Returns counts."""
-    glucose = _sync_glucose(db, vm)
-    deleted, written = _sync_events(db, vm)
+    with _PASS:
+        glucose = _sync_glucose(db, vm)
+        deleted, written = _sync_events(db, vm)
     return {"glucose": glucose, "events_deleted": deleted, "events_written": written}
 
 
@@ -192,21 +198,29 @@ def reset(db: Database, vm: VictoriaMetrics) -> None:
     """Delete every exported series and forget what was sent, so the next pass
     sends the whole history again. Deleting first matters: a resent sample would
     otherwise sit beside the old one, and a since-deleted event would linger."""
-    vm.delete_series(f'{{__name__=~"sugardaddy_.*",db="{DB_LABEL}"}}')
-    db.set_state(_GLUCOSE_CURSOR, "0")
-    db.set_state(_EVENTS_SENT, "{}")
+    with _PASS:
+        vm.delete_series(f'{{__name__=~"sugardaddy_.*",db="{DB_LABEL}"}}')
+        db.set_state(_GLUCOSE_CURSOR, "0")
+        db.set_state(_EVENTS_SENT, "{}")
 
 
 def export_loop(cfg: Config, db: Database, stop: threading.Event | None = None) -> None:
-    """Sync on an interval until `stop` is set (or forever if None)."""
-    vm = VictoriaMetrics(cfg.victoriametrics.url, cfg.victoriametrics.timeout_seconds)
-    interval = max(15, cfg.victoriametrics.interval_seconds)
+    """Sync on an interval until `stop` is set (or forever if None).
+
+    ``cfg`` may be a live config: switched off it idles, and a changed URL or
+    timeout gets a fresh client on the next pass — no restart needed."""
+    vm, vm_for = None, None
 
     while True:
+        vmc = cfg.victoriametrics
+        interval = max(15, vmc.interval_seconds)
         try:
-            result = sync(db, vm)
-            if any(result.values()):
-                log.info("exported %s", result)
+            if vmc.enabled and vmc.url:
+                if vm_for != (vmc.url, vmc.timeout_seconds):
+                    vm, vm_for = VictoriaMetrics(vmc.url, vmc.timeout_seconds), (vmc.url, vmc.timeout_seconds)
+                result = sync(db, vm)
+                if any(result.values()):
+                    log.info("exported %s", result)
         except ExportError as exc:
             log.warning("export paused: %s", exc)
         except Exception as exc:  # never let the loop die
@@ -229,7 +243,9 @@ def start_background(cfg: Config, db: Database) -> tuple[threading.Thread, threa
 
 def run_export(config_path: str, *, full: bool = False) -> int:
     """The `sugardaddy export` command: one pass (``--full`` resends everything)."""
-    cfg = load_config(config_path)
+    from sugardaddy.settings import load_effective
+
+    cfg = load_effective(config_path)
     if not cfg.victoriametrics.url:
         print("error: [victoriametrics] url is not set")
         return 2

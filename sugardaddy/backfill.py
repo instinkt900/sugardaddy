@@ -16,7 +16,6 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from sugardaddy.config import load_config
 from sugardaddy.constants import mmol_to_mgdl
 from sugardaddy.db import Database
 from sugardaddy.models import GlucoseReading
@@ -68,32 +67,38 @@ def fetch_history(ha_url: str, entity: str, token: str, days: int) -> list[Gluco
     return readings
 
 
+def import_history(
+    db: Database, ha_url: str, entity: str, token: str, days: int, unit: str
+) -> dict:
+    """Fetch and store. Shared by the CLI and the desktop's import button.
+    Readings dedup on their timestamp, so re-running only adds what's new.
+    Raises httpx.HTTPError on a failed request."""
+    log.info("fetching %d days of %s from HA (%s)", days, entity, ha_url)
+    readings = fetch_history(ha_url, entity, token, days)
+    if unit == "mmol/L":
+        for r in readings:
+            r.value_mgdl = mmol_to_mgdl(r.value_mgdl)
+    added = db.add_readings(readings)
+    log.info("backfill: %d fetched, %d new (total now %d)", len(readings), added, db.reading_count())
+    return {"fetched": len(readings), "added": added, "total": db.reading_count()}
+
+
 def run_backfill(config_path: str, days: int = 90, unit: str = "") -> int:
-    cfg = load_config(config_path)
+    from sugardaddy.settings import load_effective
+
+    cfg = load_effective(config_path)
     bf = cfg.backfill
     if not bf.ha_url or not bf.ha_entity:
-        log.error("set [backfill].ha_url and [backfill].ha_entity in the config")
+        log.error("set the Home Assistant URL and entity (desktop Settings, or [backfill] in the config)")
         return 1
     if not bf.token:
         log.error("missing HA token — set SUGARDADDY_HA_TOKEN")
         return 1
-
-    unit = (unit or cfg.web.units).strip()
     db = Database(cfg.database.path)
     db.init_db()
-
-    log.info("fetching %d days of %s from HA (%s)", days, bf.ha_entity, bf.ha_url)
     try:
-        readings = fetch_history(bf.ha_url, bf.ha_entity, bf.token, days)
+        import_history(db, bf.ha_url, bf.ha_entity, bf.token, days, (unit or cfg.web.units).strip())
     except httpx.HTTPError as exc:
         log.error("HA request failed: %s", exc)
         return 1
-
-    if unit == "mmol/L":
-        for r in readings:
-            r.value_mgdl = mmol_to_mgdl(r.value_mgdl)
-        log.info("converted %d values mmol/L → mg/dL", len(readings))
-
-    added = db.add_readings(readings)
-    log.info("backfill: %d fetched, %d new (total now %d)", len(readings), added, db.reading_count())
     return 0

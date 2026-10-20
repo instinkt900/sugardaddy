@@ -132,6 +132,18 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+-- Every change made to a setting from the desktop: what it was, what it
+-- became, and when. ISF/ICR feed the bolus reference, and a figure is only
+-- explainable if you can see which numbers it ran on and since when.
+CREATE TABLE IF NOT EXISTS settings_history (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_utc INTEGER NOT NULL,
+    key    TEXT    NOT NULL,
+    old    TEXT,
+    new    TEXT,
+    reset  INTEGER NOT NULL DEFAULT 0
+);
+
 -- Bookkeeping for the notifier: what it has already pushed about, so a restart
 -- doesn't re-nag and a 15-minute poll doesn't nag 96 times a day. Key/value
 -- because there is one reminder with two facts to remember (see notify.py).
@@ -824,6 +836,24 @@ class Database:
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 (key, json.dumps(value)),
             )
+
+    def log_setting_change(self, ts: int, key: str, old, new, *, reset: bool = False) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO settings_history (ts_utc, key, old, new, reset) VALUES (?, ?, ?, ?, ?)",
+                (ts, key, json.dumps(old), json.dumps(new), int(reset)),
+            )
+
+    def setting_history(self, limit: int = 50) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM settings_history ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [
+            {"ts": r["ts_utc"] * 1000, "key": r["key"], "old": json.loads(r["old"]),
+             "new": json.loads(r["new"]), "reset": bool(r["reset"])}
+            for r in rows
+        ]
 
     # --- generic helpers -------------------------------------------------
 

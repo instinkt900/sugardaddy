@@ -1166,16 +1166,187 @@
   }
   document.getElementById("presets-reset").onclick = () => putPresets(null);
 
+  // ---- settings ----
+  // Rendered from /api/settings, which describes every editable field (type,
+  // unit, help, where its value comes from). Loaded when the view opens and
+  // after each save — never by the auto-refresh, which would wipe a half-typed
+  // value.
+  const SECTION_ACTIONS = {
+    notify: `<button type="button" class="icon-btn" data-act="push-test">Send a test notification</button>`,
+    victoriametrics: `<button type="button" class="icon-btn" data-act="vm-test">Test connection</button>
+      <button type="button" class="icon-btn" data-act="vm-sync">Sync now</button>
+      <button type="button" class="icon-btn danger" data-act="vm-resend">Resend everything</button>`,
+    backfill: `<span class="inline-form"><label class="inline">Days <input type="number" class="ha-days" value="90" min="1" max="3650" style="width:80px"></label>
+      <input type="password" class="ha-token" placeholder="long-lived token (used once, not saved)" autocomplete="off" style="min-width:260px">
+      <button type="button" class="icon-btn save" data-act="ha-import">Import glucose history</button></span>`,
+  };
+
+  function fieldInput(f) {
+    const v = f.value;
+    const base = f.kind.replace(/^opt/, "");
+    if (base === "bool") return `<input type="checkbox" data-key="${f.key}" ${v ? "checked" : ""}>`;
+    if (base === "choice") {
+      return `<select data-key="${f.key}">${f.choices.map((c) => `<option ${c === v ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>`;
+    }
+    const type = base === "float" || base === "int" ? "number" : base === "date" ? "date" : "text";
+    const step = base === "int" ? "1" : "any";
+    return `<input type="${type}" ${type === "number" ? `step="${step}"` : ""} data-key="${f.key}" value="${attr(v == null ? "" : String(v))}"
+      placeholder="${f.kind.startsWith("opt") ? "not set" : ""}">`;
+  }
+  const show = (v) => (v == null || v === "" ? "not set" : v === true ? "on" : v === false ? "off" : String(v));
+
+  function renderSettings(d) {
+    document.getElementById("outbound-banner").hidden = !d.no_outbound;
+    const box = document.getElementById("settings-sections");
+    box.innerHTML = d.sections.map((sec) => `
+      <section class="panel settings-panel" data-section="${sec.id}">
+        <h2>${esc(sec.title)}</h2>
+        <p class="panel-note muted">${esc(sec.note)}</p>
+        <div class="field-list">${sec.fields.map((f) => `
+          <div class="set-field">
+            <label for="f-${f.key}">${esc(f.label)}${f.unit ? ` <span class="muted">(${esc(f.unit)})</span>` : ""}</label>
+            <div class="set-input">${fieldInput(f).replace("data-key", `id="f-${f.key}" data-key`)}</div>
+            <div class="set-src">${f.source === "db"
+              ? `<span class="src-db" title="config.toml says: ${attr(show(f.file_value))}">changed here</span>
+                 <button type="button" class="link-btn" data-reset="${f.key}" title="Back to the config.toml value (${attr(show(f.file_value))})">↺ file</button>`
+              : `<span class="muted">from file</span>`}
+              ${f.applies !== "now" ? `<span class="muted"> · applies on ${esc(f.applies)}</span>` : ""}</div>
+            ${f.help ? `<div class="set-help muted">${esc(f.help)}</div>` : ""}
+          </div>`).join("")}</div>
+        <div class="me-actions">
+          <button type="button" class="icon-btn save" data-act="save">Save</button>
+          <span class="set-status muted"></span>
+          <span style="flex:1"></span>
+          ${SECTION_ACTIONS[sec.id] || ""}
+        </div>
+        <div class="action-result muted"></div>
+      </section>`).join("");
+
+    document.getElementById("bootstrap-list").innerHTML =
+      d.bootstrap.map((b) => `<dt>${esc(b.label)}</dt><dd><code>${esc(b.value)}</code></dd>`).join("");
+    document.getElementById("secrets-list").innerHTML = d.secrets.map((x) =>
+      `<li><span class="${x.set ? "dot-ok" : "dot-off"}"></span><code>${esc(x.name)}</code> <span class="muted">— ${esc(x.what)}: ${x.set ? "set" : "not set"}</span></li>`).join("");
+    document.getElementById("settings-history").innerHTML = d.history.length
+      ? d.history.map((h) => `<li><span class="muted">${SD.tableStamp(h.ts)}</span> <code>${esc(h.key)}</code>
+          ${esc(show(h.old))} → <b>${esc(show(h.new))}</b>${h.reset ? ` <span class="muted">(back to file)</span>` : ""}</li>`).join("")
+      : `<li class="muted">No changes made here yet.</li>`;
+
+    box.querySelectorAll(".settings-panel").forEach((panel) => {
+      const sec = panel.dataset.section;
+      const say = (msg, bad) => {
+        const el = panel.querySelector(".set-status");
+        el.textContent = msg;
+        el.classList.toggle("bad-text", !!bad);
+      };
+      panel.querySelector('[data-act="save"]').onclick = () => {
+        const changes = {};
+        panel.querySelectorAll("[data-key]").forEach((el) => {
+          const name = el.dataset.key.split(".")[1];
+          changes[name] = el.type === "checkbox" ? el.checked : el.value;
+        });
+        sendSettings("PUT", "/api/settings", { changes: { [sec]: changes } }, say);
+      };
+      panel.querySelectorAll("[data-reset]").forEach((b) => b.onclick = () =>
+        sendSettings("POST", "/api/settings/reset", { keys: [b.dataset.reset] }, say));
+      panel.querySelectorAll("[data-act]").forEach((b) => {
+        const act = b.dataset.act;
+        if (act === "save") return;
+        b.onclick = () => runAction(act, panel, b);
+      });
+    });
+  }
+
+  function sendSettings(method, url, body, say) {
+    say("Saving…");
+    fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { say(d.error || "Save failed.", true); return; }
+        renderSettings(d);
+        // Units, targets and the insulin maths change what every view shows.
+        load();
+      });
+  }
+
+  function runAction(act, panel, btn) {
+    const out = panel.querySelector(".action-result");
+    const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })
+      .then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => ({})) }));
+    const report = (p, fmt) => p.then(({ ok, d }) => {
+      out.classList.toggle("bad-text", !ok || d.ok === false);
+      out.textContent = ok ? fmt(d) : (d.error || "Failed.");
+    }).finally(() => { btn.disabled = false; });
+    if (act === "vm-resend" && !confirm("Delete everything this app exported to VictoriaMetrics and send the whole history again?")) return;
+    btn.disabled = true;
+    out.textContent = "Working…";
+    if (act === "push-test") report(post("/api/push/test"), (d) => `Sent to ${d.sent ?? 0} of ${d.subscriptions ?? 0} device(s).`);
+    else if (act === "vm-test") report(post("/api/actions/victoriametrics", { action: "test" }), (d) => d.ok ? "Reached the server." : `Server answered HTTP ${d.status}.`);
+    else if (act === "vm-sync" || act === "vm-resend") {
+      report(post("/api/actions/victoriametrics", { action: act === "vm-sync" ? "sync" : "resend" }),
+        (d) => `Sent ${d.glucose} readings; ${d.events_written} doses/meals written, ${d.events_deleted} removed.`);
+    } else if (act === "ha-import") {
+      out.textContent = "Importing — this can take a minute…";
+      report(post("/api/actions/ha-import", { days: panel.querySelector(".ha-days").value, token: panel.querySelector(".ha-token").value }),
+        (d) => `Fetched ${d.fetched} readings, ${d.added} new (now ${d.total} stored).`);
+      panel.querySelector(".ha-token").value = "";
+    }
+  }
+
+  function loadSettings() {
+    fetch("/api/settings").then((r) => r.json()).then(renderSettings).catch(() => {});
+  }
+
+  // ---- CSV ----
+  document.querySelectorAll("#export-buttons [data-kind]").forEach((b) => b.addEventListener("click", () => {
+    const span = document.querySelector('input[name="export-span"]:checked').value;
+    let qs = "";
+    if (span === "range") { const { from, to } = rangeEpochs(); qs = `?from=${from}&to=${to}`; }
+    window.location.href = `/api/export/${b.dataset.kind}.csv${qs}`;
+  }));
+
+  function importFile(dryRun) {
+    const file = document.getElementById("import-file").files[0];
+    const kind = document.getElementById("import-kind").value;
+    const out = document.getElementById("import-result");
+    if (!file) { alert("Choose a CSV file first."); return; }
+    const fd = new FormData();
+    fd.append("file", file);
+    out.hidden = false;
+    out.innerHTML = "Reading…";
+    fetch(`/api/import/${kind}?dry_run=${dryRun}`, { method: "POST", body: fd })
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { out.innerHTML = `<span class="bad-text">${esc(d.error || "Import failed.")}</span>`; return; }
+        const errs = d.errors.map((e) => `<li>line ${e.line}: ${esc(e.error)}</li>`).join("");
+        const more = d.error_count > d.errors.length ? `<li>…and ${d.error_count - d.errors.length} more</li>` : "";
+        const what = kind === "meals" ? "meal" : kind === "glucose" ? "reading" : kind === "notes" ? "note" : "dose";
+        out.innerHTML = dryRun
+          ? `<p><b>${d.added}</b> new ${what}${d.added === 1 ? "" : "s"} to add from ${d.rows} row${d.rows === 1 ? "" : "s"};
+               ${d.duplicates} already here (skipped)${d.error_count ? `; <span class="bad-text">${d.error_count} row${d.error_count === 1 ? "" : "s"} can't be read</span>` : ""}.</p>
+             ${errs || more ? `<ul class="err-list">${errs}${more}</ul>` : ""}
+             ${d.added ? `<button type="button" class="icon-btn save" id="import-go">Import ${d.added} ${what}${d.added === 1 ? "" : "s"}</button>` : ""}`
+          : `<p>Imported <b>${d.added}</b> ${what}${d.added === 1 ? "" : "s"}${d.duplicates ? `, skipped ${d.duplicates} already here` : ""}.</p>`;
+        const go = document.getElementById("import-go");
+        if (go) go.onclick = () => importFile(false);
+        if (!dryRun) load();
+      });
+  }
+  document.getElementById("import-check").addEventListener("click", () => importFile(true));
+  ["import-file", "import-kind"].forEach((id) => document.getElementById(id).addEventListener("change", () => {
+    document.getElementById("import-result").hidden = true;
+  }));
+
   // ---- views ----
   // One page, five views. The current one is remembered with the rest of the
   // view state, and is in the URL hash so a link (or a reload) lands on it.
-  const VIEWS = ["overview", "logbook", "meals", "library", "phone"];
+  const VIEWS = ["overview", "logbook", "meals", "library", "phone", "settings"];
   function showView(v) {
     if (!VIEWS.includes(v)) v = "overview";
     document.querySelectorAll(".desk-nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
     document.querySelectorAll(".view").forEach((el) => { el.hidden = el.dataset.view !== v; });
     // The range only means something to the time-based views.
     document.getElementById("range-bar").classList.toggle("dim", v === "library" || v === "phone");
+    if (v === "settings") loadSettings();
     if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
     savePrefs({ view: v });
     // A chart built while its view was hidden measured itself at zero.

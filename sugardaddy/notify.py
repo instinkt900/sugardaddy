@@ -34,7 +34,7 @@ import time
 from datetime import datetime, tzinfo
 
 from sugardaddy.analysis import basal_status
-from sugardaddy.config import Config, load_config
+from sugardaddy.config import Config
 from sugardaddy.db import Database
 
 log = logging.getLogger("sugardaddy.notify")
@@ -285,17 +285,19 @@ def run_pass(
 # --- background loop (used by `serve`) ---------------------------------------
 
 
-def notify_loop(
-    cfg: Config, db: Database, tz: tzinfo, stop: threading.Event | None = None
-) -> None:
+def notify_loop(cfg: Config, db: Database, stop: threading.Event | None = None) -> None:
     """Check on an interval until `stop` is set (or forever if None).
 
     Mirrors the ingest loop: it never dies on error, because a push service having
     a bad afternoon must not cost you every future reminder. First check happens
     after one interval rather than at startup, so a restart loop can't turn into a
     burst of notifications.
+
+    ``cfg`` may be a live config: the switch, interval and timezone are re-read
+    every pass, so turning the reminder on or off from the desktop needs no
+    restart. Off (or ``poll_seconds = 0``) just idles.
     """
-    interval = max(60, cfg.notify.poll_seconds)
+    from zoneinfo import ZoneInfo
 
     def sleep(seconds: float) -> bool:
         """Sleep, but wake early if asked to stop. Returns True if stopping."""
@@ -305,25 +307,23 @@ def notify_loop(
         return stop.wait(seconds)
 
     while True:
-        if sleep(interval):
+        if sleep(max(60, cfg.notify.poll_seconds or 900)):
             log.info("notify loop stopping")
             return
+        if not cfg.notify.enabled or cfg.notify.poll_seconds <= 0:
+            continue
         try:
-            result = run_pass(db, cfg, int(time.time()), tz)
+            result = run_pass(db, cfg, int(time.time()), ZoneInfo(cfg.web.timezone))
             if result.get("sent"):
                 log.info("basal reminder pushed: %s", result)
         except Exception as exc:  # never let the loop die
             log.error("notify pass failed: %s", exc, exc_info=log.isEnabledFor(logging.DEBUG))
 
 
-def start_background(
-    cfg: Config, db: Database, tz: tzinfo
-) -> tuple[threading.Thread, threading.Event]:
+def start_background(cfg: Config, db: Database) -> tuple[threading.Thread, threading.Event]:
     """Spawn the notify loop as a daemon thread (used by `serve`)."""
     stop = threading.Event()
-    t = threading.Thread(
-        target=notify_loop, args=(cfg, db, tz, stop), name="notify", daemon=True
-    )
+    t = threading.Thread(target=notify_loop, args=(cfg, db, stop), name="notify", daemon=True)
     t.start()
     return t, stop
 
@@ -332,7 +332,9 @@ def run_notify(config_path: str, *, dry_run: bool = False) -> int:
     """The `sugardaddy notify` command: one pass, then report what happened."""
     from zoneinfo import ZoneInfo
 
-    cfg = load_config(config_path)
+    from sugardaddy.settings import load_effective
+
+    cfg = load_effective(config_path)
     db = Database(cfg.database.path)
     db.init_db()
     try:
