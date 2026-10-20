@@ -9,6 +9,7 @@ history. A thin Database wrapper hands out short-lived connections.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -123,6 +124,14 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
     failures   INTEGER NOT NULL DEFAULT 0
 );
 
+-- User-set preferences that belong to the data rather than to one browser —
+-- the phone's dose chips are chosen on the desktop and read on the phone, so
+-- they cannot live in either device's localStorage. JSON values.
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 -- Bookkeeping for the notifier: what it has already pushed about, so a restart
 -- doesn't re-nag and a 15-minute poll doesn't nag 96 times a day. Key/value
 -- because there is one reminder with two facts to remember (see notify.py).
@@ -168,6 +177,11 @@ class Database:
             # Add columns introduced after a table first shipped (idempotent).
             if not self._has_column(conn, "meals", "meal_type"):
                 conn.execute("ALTER TABLE meals ADD COLUMN meal_type TEXT NOT NULL DEFAULT ''")
+            for table in ("foods", "meal_templates"):
+                if not self._has_column(conn, table, "favourite"):
+                    conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN favourite INTEGER NOT NULL DEFAULT 0"
+                    )
             self._migrate_legacy(conn, legacy_meals)
 
     def _dedupe_foods(self, conn: sqlite3.Connection) -> None:
@@ -419,9 +433,77 @@ class Database:
             return cur.lastrowid
 
     def update_food(self, food_id: int, **fields) -> bool:
+        if "favourite" in fields and fields["favourite"] is not None:
+            fields["favourite"] = int(bool(fields["favourite"]))
         return self._update(
-            "foods", food_id, fields, {"name", "description", "carbs_g", "calories"}
+            "foods", food_id, fields, {"name", "description", "carbs_g", "calories", "favourite"}
         )
+
+    def item_usage(self) -> dict[str, tuple[int, int]]:
+        """How often each plate-line name has been logged, and when last:
+        ``{lower(name): (uses, last_ts)}``.
+
+        By name rather than ``food_id`` because ``food_id`` is soft provenance
+        that older and hand-typed lines often lack, while the name is what the
+        user actually picked. This is what tells the library's regulars from its
+        one-offs, and what fills the phone's shortcuts before any are chosen."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT lower(i.name) AS k, COUNT(*) AS n, MAX(m.ts_utc) AS last "
+                "FROM meal_items i JOIN meals m ON m.id = i.meal_id GROUP BY lower(i.name)"
+            ).fetchall()
+        return {r["k"]: (r["n"], r["last"]) for r in rows}
+
+    def meal_name_usage(self) -> dict[str, tuple[int, int]]:
+        """Same as ``item_usage`` for whole meals, keyed by the meal's name —
+        how often each saved meal has actually been logged."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT lower(name) AS k, COUNT(*) AS n, MAX(ts_utc) AS last "
+                "FROM meals WHERE name != '' GROUP BY lower(name)"
+            ).fetchall()
+        return {r["k"]: (r["n"], r["last"]) for r in rows}
+
+    def missing_carb_items(self) -> list[dict]:
+        """Plate lines logged without a carb count, grouped by name: the to-do
+        list that used to be kept as "pending" rows in the food library.
+
+        Kept on the items themselves now, so a one-off ("that burrito on
+        holiday") can be chased up without ever becoming a library food.
+        Newest first, because the plate you can still remember is the one worth
+        filling in."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT MIN(i.name) AS name, COUNT(*) AS n, MAX(m.ts_utc) AS last, "
+                "MAX(i.calories) AS calories "
+                "FROM meal_items i JOIN meals m ON m.id = i.meal_id "
+                "WHERE i.carbs_g IS NULL GROUP BY lower(i.name) ORDER BY last DESC"
+            ).fetchall()
+        return [
+            {"name": r["name"], "count": r["n"], "last_ts": r["last"], "calories": r["calories"]}
+            for r in rows
+        ]
+
+    def backfill_items_by_name(
+        self, name: str, *, carbs_g: float | None = None, calories: float | None = None
+    ) -> int:
+        """``backfill_meal_items`` keyed on the line's name instead of its food.
+
+        Same rule, same reason: only a column that is still NULL is written —
+        filling a blank completes the entry, and a recorded value is never
+        rewritten. Case-insensitive, matching how names are unique elsewhere."""
+        changed = 0
+        with self.connect() as conn:
+            for col, val in (("carbs_g", carbs_g), ("calories", calories)):
+                if val is None:
+                    continue
+                cur = conn.execute(
+                    f"UPDATE meal_items SET {col} = ? "
+                    f"WHERE lower(name) = lower(?) AND {col} IS NULL",
+                    (val, name.strip()),
+                )
+                changed = max(changed, cur.rowcount)
+        return changed
 
     def delete_food(self, food_id: int) -> bool:
         return self._delete("foods", food_id)
@@ -541,7 +623,10 @@ class Database:
             rows = conn.execute(
                 "SELECT * FROM meal_templates ORDER BY name COLLATE NOCASE"
             ).fetchall()
-            templates = [MealTemplate(id=r["id"], name=r["name"], items=[]) for r in rows]
+            templates = [
+                MealTemplate(id=r["id"], name=r["name"], items=[], favourite=bool(r["favourite"]))
+                for r in rows
+            ]
             by_id = {t.id: t for t in templates}
             if by_id:
                 placeholders = ",".join("?" * len(by_id))
@@ -605,7 +690,12 @@ class Database:
             return template_id
 
     def update_meal_template(
-        self, template_id: int, *, name: str | None = None, items: list[MealTemplateItem] | None = None
+        self,
+        template_id: int,
+        *,
+        name: str | None = None,
+        items: list[MealTemplateItem] | None = None,
+        favourite: bool | None = None,
     ) -> bool:
         with self.connect() as conn:
             exists = conn.execute(
@@ -616,6 +706,11 @@ class Database:
             if name is not None and name.strip():
                 conn.execute(
                     "UPDATE meal_templates SET name = ? WHERE id = ?", (name.strip(), template_id)
+                )
+            if favourite is not None:
+                conn.execute(
+                    "UPDATE meal_templates SET favourite = ? WHERE id = ?",
+                    (int(bool(favourite)), template_id),
                 )
             if items is not None:
                 conn.execute(
@@ -709,6 +804,27 @@ class Database:
                 (key, value),
             )
 
+    # --- settings ---------------------------------------------------------
+
+    def get_setting(self, key: str):
+        """A stored preference, decoded, or ``None`` when it was never set —
+        which callers read as "use the default", not as an empty value."""
+        with self.connect() as conn:
+            row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return json.loads(row["value"]) if row else None
+
+    def set_setting(self, key: str, value) -> None:
+        """Store a preference; ``None`` deletes it, restoring the default."""
+        with self.connect() as conn:
+            if value is None:
+                conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+                return
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, json.dumps(value)),
+            )
+
     # --- generic helpers -------------------------------------------------
 
     def _update(self, table: str, row_id: int, fields: dict, allowed: set[str]) -> bool:
@@ -773,6 +889,7 @@ def _food(row: sqlite3.Row) -> Food:
         description=row["description"],
         carbs_g=row["carbs_g"],
         calories=row["calories"],
+        favourite=bool(row["favourite"]),
     )
 
 

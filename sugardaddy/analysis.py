@@ -152,7 +152,10 @@ def post_meal_responses(
     out: list[dict] = []
 
     for meal in meals:
-        start = _nearest(ordered, meal.ts_utc, _MEAL_MATCH_WINDOW)
+        moment = meal_moment(
+            ordered, doses, meal.ts_utc, dia_minutes=dia_minutes, peak_minutes=peak_minutes
+        )
+        start = moment["start"]
         window = [r for r in ordered if meal.ts_utc <= r.ts_utc <= meal.ts_utc + _POST_MEAL_WINDOW]
         # Nothing after the plate yet, but the data simply hasn't got there —
         # the meal is still unfolding, not unreadable.
@@ -161,18 +164,8 @@ def post_meal_responses(
             continue
         peak = max(window, key=lambda r: r.value_mgdl) if window else None
         end = window[-1] if window else None
-        # Meal bolus = rapid-acting doses co-timed with the meal (± match window).
-        bolus_units = sum(
-            d.units
-            for d in doses
-            if is_rapid(d) and abs(d.ts_utc - meal.ts_utc) <= _MEAL_MATCH_WINDOW
-        )
-        # IOB at start = insulin from strictly-earlier doses still active now,
-        # i.e. the depot excluding this meal's own (co-timed) bolus.
-        prior = [d for d in doses if d.ts_utc < meal.ts_utc - _MEAL_MATCH_WINDOW]
-        iob_start = active_iob(
-            prior, meal.ts_utc, dia_minutes=dia_minutes, peak_minutes=peak_minutes
-        )
+        bolus_units = moment["bolus_units"]
+        iob_start = moment["iob_start"]
         # Nearest rapid dose on a wider window than the co-timing one, signed:
         # negative = insulin before the plate (a pre-bolus), positive = chasing it
         # afterwards. None means nothing rapid landed anywhere near the meal.
@@ -238,6 +231,79 @@ def post_meal_responses(
             )
         out.append(row)
     out.sort(key=lambda d: d["ts_utc"], reverse=True)  # most recent meal first
+    return out
+
+
+def meal_moment(
+    ordered: list[GlucoseReading],
+    doses: list[InsulinDose],
+    meal_ts: int,
+    *,
+    dia_minutes: float = DEFAULT_DIA_MINUTES,
+    peak_minutes: float = DEFAULT_PEAK_MINUTES,
+) -> dict:
+    """The situation a meal was eaten into: the glucose at the plate, the
+    rapid-acting dose co-timed with it, and the insulin already working from
+    earlier doses.
+
+    Shared by ``post_meal_responses`` and the web layer's meal-moment bolus
+    reference, so the figure shown while fixing a past meal is evaluated on
+    exactly the inputs the response table replays — two definitions of "the
+    glucose at that meal" would let the two surfaces quietly disagree.
+
+    ``ordered`` must be sorted by time. ``start`` is ``None`` when no reading
+    lies within the match window (a sensor gap), which callers report as a
+    missing input rather than guessing.
+    """
+    start = _nearest(ordered, meal_ts, _MEAL_MATCH_WINDOW)
+    # Meal bolus = rapid-acting doses co-timed with the meal (± match window).
+    bolus_units = sum(
+        d.units for d in doses if is_rapid(d) and abs(d.ts_utc - meal_ts) <= _MEAL_MATCH_WINDOW
+    )
+    # IOB at start = insulin from strictly-earlier doses still active now,
+    # i.e. the depot excluding this meal's own (co-timed) bolus.
+    prior = [d for d in doses if d.ts_utc < meal_ts - _MEAL_MATCH_WINDOW]
+    iob_start = active_iob(prior, meal_ts, dia_minutes=dia_minutes, peak_minutes=peak_minutes)
+    return {"start": start, "bolus_units": bolus_units, "iob_start": iob_start}
+
+
+def meal_doses(doses: list[InsulinDose], meal_ts: int) -> list[InsulinDose]:
+    """The rapid-acting doses that belong to a meal: the ones co-timed with it,
+    on the same window ``meal_moment`` counts as its bolus. The phone's meal
+    detail lists these so "what did I give for this?" has an answer on the
+    same screen as the plate."""
+    return [
+        d for d in doses if is_rapid(d) and abs(d.ts_utc - meal_ts) <= _MEAL_MATCH_WINDOW
+    ]
+
+
+def dose_presets(
+    doses: list[InsulinDose], *, per_kind: int = 4, basal_fallback: float | None = None
+) -> dict[str, list[float]]:
+    """The dose sizes actually used most, per kind — the phone's one-tap chips
+    when nobody has set them by hand on the desktop.
+
+    Ranked by how often each exact amount was logged, then shown smallest
+    first so the chips read as a scale rather than a popularity list. Basal is
+    usually one number, so it keeps only what is genuinely common (seen at
+    least twice) and falls back to the prescribed amount when the log is empty.
+    Descriptive only: these are the user's own habits played back, never a
+    computed amount.
+    """
+    counts: dict[str, dict[float, int]] = {}
+    for d in doses:
+        counts.setdefault(d.kind, {})
+        counts[d.kind][d.units] = counts[d.kind].get(d.units, 0) + 1
+    out: dict[str, list[float]] = {}
+    for kind in ("bolus", "correction", "basal"):
+        ranked = sorted(counts.get(kind, {}).items(), key=lambda kv: (-kv[1], kv[0]))
+        if kind == "basal":
+            picks = [u for u, n in ranked if n >= 2][:2]
+            if not picks and basal_fallback:
+                picks = [basal_fallback]
+        else:
+            picks = [u for u, _ in ranked[:per_kind]]
+        out[kind] = sorted(picks)
     return out
 
 

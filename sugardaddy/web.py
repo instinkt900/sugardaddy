@@ -27,6 +27,9 @@ from sugardaddy.analysis import (
     daily_intake,
     day_coverage,
     day_window_start,
+    dose_presets,
+    meal_doses,
+    meal_moment,
     post_meal_responses,
     smooth_glucose,
     summarize,
@@ -257,7 +260,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "items": [meal_item_json(i) for i in m.items],
         }
 
-    def food_json(f: Food) -> dict:
+    def food_json(f: Food, usage: dict | None = None) -> dict:
+        uses, last = (usage or {}).get(f.name.lower(), (0, None))
         return {
             "id": f.id,
             "name": f.name,
@@ -267,12 +271,21 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             # Derived, never stored — see Food.pending. Drives the "awaiting
             # details" group at the top of the desktop Foods table.
             "pending": f.pending,
+            "favourite": f.favourite,
+            # How much the food is actually eaten: what separates the regulars
+            # from the one-offs when the library is being pruned.
+            "uses": uses,
+            "last_used": last * 1000 if last else None,
         }
 
-    def meal_template_json(t: MealTemplate) -> dict:
+    def meal_template_json(t: MealTemplate, usage: dict | None = None) -> dict:
+        uses, last = (usage or {}).get(t.name.lower(), (0, None))
         return {
             "id": t.id,
             "name": t.name,
+            "favourite": t.favourite,
+            "uses": uses,
+            "last_used": last * 1000 if last else None,
             "items": [
                 {
                     "id": i.id,
@@ -286,30 +299,39 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             ],
         }
 
-    def register_pending_foods(items: list[MealItem]) -> None:
-        """Give every carb-less line on a plate a food row to be chased up.
+    def link_library_foods(items: list[MealItem], raw) -> None:
+        """Tie plate lines to the library where the user asked or the name
+        already matches — and otherwise leave them as one-offs.
 
-        A food typed straight onto a plate with no carb count is exactly the
-        entry that blocks carb-ratio analysis later, and it used to leave no
-        trace anywhere but that one meal's snapshot — nothing to come back to.
-        Registering it in the library (and linking the item back via
-        ``food_id``) turns it into a to-do instead: it sits at the top of the
-        Foods table until someone fills in its carbs, and doing so backfills
-        every blank item that referenced it.
+        Carb-less lines used to be registered as "pending" library foods so they
+        could be chased up. That made the library the dumping ground for every
+        name ever typed — a burrito on holiday sat beside the daily biscuits
+        forever. The to-do now lives on the items themselves
+        (``Database.missing_carb_items``), so a one-off can be completed without
+        joining the library. A line joins only when the phone sends
+        ``keep: true`` ("Keep in my foods").
 
-        Lines that already carry carbs are left alone: they need nothing, and a
-        library row per one-off plate line would bury the list. A name that
-        already exists in the library is linked to rather than duplicated, and
-        if that food *does* know its carbs the item takes the snapshot it would
-        have got from the picker — the user typed a known food and just didn't
-        retype the numbers.
+        A typed name that already exists in the library is still linked, and if
+        that food knows its carbs the line takes them — the user typed a known
+        food and just didn't retype the numbers.
         """
+        keep = {
+            (it.get("name") or "").strip().lower()
+            for it in raw or []
+            if it.get("keep")
+        }
         for it in items:
-            if it.carbs_g is not None or it.food_id is not None or not it.name:
+            if not it.name:
+                continue
+            if it.name.lower() in keep:
+                it.food_id = db.add_food(
+                    Food(name=it.name, carbs_g=it.carbs_g, calories=it.calories)
+                )
+                continue
+            if it.food_id is not None or it.carbs_g is not None:
                 continue
             existing = db.get_food_by_name(it.name)
             if existing is None:
-                it.food_id = db.add_food(Food(name=it.name))
                 continue
             it.food_id = existing.id
             if existing.carbs_g is not None:
@@ -340,7 +362,12 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         phase = activity_phase(
             recent, now, dia_minutes=cfg.insulin.dia_minutes, peak_minutes=cfg.insulin.peak_minutes
         )
+        # When the depot was last topped up, for the home screen's status line.
+        # A fact about the log, worded as such — never "basal due".
+        basal = db.latest_dose_of_kind("basal")
         ctx = {
+            "basal_hours_ago": round((now - basal.ts_utc) / 3600, 1) if basal else None,
+            "basal_units": basal.units if basal else None,
             "iob": round(iob, 1),
             "iob_dose_count": sum(1 for d in recent if is_rapid(d)),
             "activity_pct": round(phase[0] * 100) if phase else None,
@@ -451,6 +478,47 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     def api_current():
         return current_context()
 
+    def meal_reference(meal_id: int, carbs) -> dict | None:
+        """The bolus reference evaluated at a logged meal's own moment.
+
+        Fixing a past plate ("the chips were large, not regular") should show
+        what the formula makes of the *corrected* plate, but against the glucose
+        and the depot that were there when it was eaten — evaluating it against
+        now would answer a question nobody asked. ``analysis.meal_moment`` is the
+        same definition the post-meal table replays, so the two can't disagree.
+        No reading near the meal → the correction half is reported missing.
+        """
+        meal = db.get_meal(meal_id)
+        if meal is None:
+            return None
+        dia = cfg.insulin.dia_minutes
+        readings = db.readings_between(meal.ts_utc - 3600, meal.ts_utc + 3600)
+        doses = db.doses_between(meal.ts_utc - dia * 60, meal.ts_utc + 3600)
+        m = meal_moment(
+            readings, doses, meal.ts_utc, dia_minutes=dia, peak_minutes=cfg.insulin.peak_minutes
+        )
+        start = m["start"]
+        ref = bolus_reference(
+            bg_mgdl=start.value_mgdl if start else None,
+            target_mgdl=cfg.bolus_target_mgdl,
+            isf_mgdl_per_unit=cfg.isf_mgdl,
+            icr_g_per_unit=cfg.insulin.icr,
+            carbs_g=_opt_num(carbs) if carbs is not None else meal.total_carbs,
+            iob_units=m["iob_start"],
+        )
+        return {
+            "enabled": True,
+            "units": cfg.web.units,
+            "at_meal": True,
+            "glucose": to_display(start.value_mgdl, cfg.web.units) if start else None,
+            # Not stale: an old reading is exactly what is wanted here. Only its
+            # absence drops the correction.
+            "glucose_stale": False,
+            "target": to_display(cfg.bolus_target_mgdl, cfg.web.units),
+            "bolus_given": round(m["bolus_units"], 1),
+            "ref": ref.as_dict(),
+        }
+
     @app.get("/api/bolus-reference")
     def api_bolus_reference(request: Request):
         """EXPERIMENTAL live reference for the meal currently being built.
@@ -477,6 +545,10 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         """
         if cfg.isf_mgdl is None:
             return {"enabled": False}
+        meal_id = _opt_int(request.query_params.get("meal_id"))
+        if meal_id is not None:
+            out = meal_reference(meal_id, request.query_params.get("carbs"))
+            return out if out is not None else JSONResponse({"error": "no such meal"}, status_code=404)
 
         now = now_epoch()
         doses = db.doses_between(now - cfg.insulin.dia_minutes * 60, now)
@@ -508,6 +580,137 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             "target": to_display(cfg.bolus_target_mgdl, cfg.web.units),
             "ref": ref.as_dict(),
         }
+
+    @app.get("/api/meal/{meal_id}/insight")
+    def api_meal_insight(meal_id: int):
+        """Everything the phone's meal detail shows beside the plate: the doses
+        that went with it, its post-meal response so far, and the reference for
+        it. One row of the desktop post-meal table, for one meal — so "what did
+        that meal ask for?" no longer needs the desktop."""
+        meal = db.get_meal(meal_id)
+        if meal is None:
+            return JSONResponse({"error": "no such meal"}, status_code=404)
+        dia = cfg.insulin.dia_minutes
+        readings = db.readings_between(meal.ts_utc - 3600, meal.ts_utc + 3 * 3600)
+        doses = db.doses_between(meal.ts_utc - dia * 60, meal.ts_utc + 3 * 3600)
+        rows = post_meal_responses(
+            readings,
+            [meal],
+            cfg.web.units,
+            doses,
+            dia_minutes=dia,
+            peak_minutes=cfg.insulin.peak_minutes,
+            isf_mgdl=cfg.isf_mgdl,
+            icr=cfg.insulin.icr,
+            target_mgdl=cfg.bolus_target_mgdl,
+        )
+        return {
+            "meal": meal_json(meal),
+            "units": cfg.web.units,
+            "doses": [dose_json(d) for d in meal_doses(doses, meal.ts_utc)],
+            # None when the sensor has nothing around the meal at all.
+            "response": rows[0] if rows else None,
+            "reference": meal_reference(meal_id, None) if cfg.isf_mgdl is not None else {"enabled": False},
+        }
+
+    # --- phone shortcuts -------------------------------------------------
+
+    _SHORTCUT_FOODS = 10
+    _SHORTCUT_MEALS = 6
+
+    def presets_context() -> dict:
+        """The phone's dose chips: chosen on the desktop, or — until someone
+        does — the user's own most-used amounts from the last 90 days."""
+        chosen = db.get_setting("phone.dose_presets")
+        now = now_epoch()
+        learned = dose_presets(
+            db.doses_between(now - 90 * _DAY, now),
+            basal_fallback=cfg.prescription.basal_units,
+        )
+        return {"presets": chosen or learned, "custom": chosen is not None, "learned": learned}
+
+    @app.get("/api/shortcuts")
+    def api_shortcuts():
+        """What the phone offers as one-tap buttons. Favourites (starred on the
+        desktop) come first; the rest of the row fills with whatever has been
+        eaten most in the last 30 days, so a fresh install is useful before
+        anyone has curated anything."""
+        now = now_epoch()
+        usage = db.item_usage()
+        recent_counts: dict[str, int] = {}
+        for m in db.meals_between(now - 30 * _DAY, now):
+            for i in m.items:
+                recent_counts[i.name.lower()] = recent_counts.get(i.name.lower(), 0) + 1
+        foods = [f for f in db.list_foods() if f.carbs_g is not None]
+        fav = [f for f in foods if f.favourite]
+        rest = sorted(
+            (f for f in foods if not f.favourite and recent_counts.get(f.name.lower())),
+            key=lambda f: -recent_counts[f.name.lower()],
+        )
+        meal_usage = db.meal_name_usage()
+        tmpls = db.list_meal_templates()
+        tfav = [t for t in tmpls if t.favourite]
+        trest = sorted(
+            (t for t in tmpls if not t.favourite and meal_usage.get(t.name.lower())),
+            key=lambda t: -meal_usage[t.name.lower()][1],
+        )
+        return {
+            "doses": presets_context()["presets"],
+            "foods": [food_json(f, usage) for f in (fav + rest)[: max(_SHORTCUT_FOODS, len(fav))]],
+            "meals": [
+                meal_template_json(t, meal_usage)
+                for t in (tfav + trest)[: max(_SHORTCUT_MEALS, len(tfav))]
+            ],
+        }
+
+    @app.get("/api/settings/dose-presets")
+    def get_dose_presets():
+        return presets_context()
+
+    @app.put("/api/settings/dose-presets")
+    async def put_dose_presets(request: Request):
+        """Set the phone's dose chips, per kind. ``{"presets": null}`` goes back
+        to the learned defaults."""
+        body = await request.json()
+        raw = body.get("presets")
+        if raw is None:
+            db.set_setting("phone.dose_presets", None)
+            return presets_context()
+        clean = {}
+        for kind in INSULIN_KINDS:
+            vals = sorted({v for v in (_opt_num(x) for x in raw.get(kind) or []) if v and v > 0})
+            clean[kind] = vals[:8]
+        db.set_setting("phone.dose_presets", clean)
+        return presets_context()
+
+    # --- missing carbs (the to-do) ---------------------------------------
+
+    @app.get("/api/missing-carbs")
+    def api_missing_carbs():
+        return [
+            {**row, "last_used": row["last_ts"] * 1000, "local": local_str(row["last_ts"])}
+            for row in db.missing_carb_items()
+        ]
+
+    @app.post("/api/missing-carbs")
+    async def fill_missing_carbs(request: Request):
+        """Fill in a plate line's carbs after the fact, by name: every blank line
+        with that name is completed (``IS NULL`` only — see
+        ``Database.backfill_items_by_name``). A library food of the same name
+        that was itself waiting gets the figure too; ``keep`` adds one."""
+        body = await request.json()
+        name = (body.get("name") or "").strip()
+        carbs = _opt_num(body.get("carbs_g"))
+        if not name or carbs is None:
+            return JSONResponse({"error": "name and carbs_g required"}, status_code=400)
+        calories = _opt_num(body.get("calories"))
+        filled = db.backfill_items_by_name(name, carbs_g=carbs, calories=calories)
+        food = db.get_food_by_name(name)
+        if food is not None and food.carbs_g is None:
+            db.update_food(food.id, carbs_g=carbs, calories=calories if food.calories is None else None)
+        elif food is None and body.get("keep"):
+            db.add_food(Food(name=name, carbs_g=carbs, calories=calories))
+        return {"filled_items": filled}
 
     @app.get("/api/timeline")
     def api_timeline(request: Request):
@@ -699,10 +902,14 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             note=(body.get("note") or "").strip(),
             items=_parse_meal_items(body.get("items")),
         )
-        register_pending_foods(meal.items)
+        link_library_foods(meal.items, body.get("items"))
         meal.id = db.add_meal(meal)
-        # A named meal is also saved to the library — created, or updated by name.
-        if name:
+        # Logging is a record of what happened; saving for reuse is a separate,
+        # explicit choice. A named meal used to be upserted into the saved meals
+        # by name, so tweaking a loaded "Red Rooster" plate for one day silently
+        # redefined Red Rooster for every day after it. Only `save_template`
+        # (the phone's "Also update the saved meal" switch) writes one now.
+        if name and body.get("save_template"):
             db.upsert_meal_template(name, _parse_template_items(body.get("items")))
         return meal_json(db.get_meal(meal.id))
 
@@ -770,7 +977,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             fields["note"] = (body["note"] or "").strip()
         items = _parse_meal_items(body["items"]) if "items" in body else None
         if items:
-            register_pending_foods(items)
+            link_library_foods(items, body["items"])
         ok = db.update_meal(meal_id, items=items, **fields)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
@@ -822,7 +1029,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
 
     @app.get("/api/foods")
     def list_foods():
-        return [food_json(f) for f in db.list_foods()]
+        usage = db.item_usage()
+        return [food_json(f, usage) for f in db.list_foods()]
 
     @app.post("/api/foods")
     async def create_food(request: Request):
@@ -862,6 +1070,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             fields["carbs_g"] = _opt_num(body["carbs_g"])
         if "calories" in body:
             fields["calories"] = _opt_num(body["calories"])
+        if "favourite" in body:
+            fields["favourite"] = bool(body["favourite"])
         before = db.get_food(food_id)
         ok = db.update_food(food_id, **fields)
         filled = (
@@ -882,7 +1092,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
 
     @app.get("/api/meal-templates")
     def list_meal_templates():
-        return [meal_template_json(t) for t in db.list_meal_templates()]
+        usage = db.meal_name_usage()
+        return [meal_template_json(t, usage) for t in db.list_meal_templates()]
 
     @app.post("/api/meal-templates")
     async def create_meal_template(request: Request):
@@ -905,7 +1116,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
                     {"error": "a saved meal with that name already exists"}, status_code=409
                 )
         items = _parse_template_items(body["items"]) if "items" in body else None
-        ok = db.update_meal_template(template_id, name=name, items=items)
+        favourite = bool(body["favourite"]) if "favourite" in body else None
+        ok = db.update_meal_template(template_id, name=name, items=items, favourite=favourite)
         return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
 
     @app.delete("/api/meal-templates/{template_id}")

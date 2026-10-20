@@ -77,6 +77,10 @@ class Food:
     description: str = ""
     carbs_g: float | None = None
     calories: float | None = None
+    # Marked on the desktop to sit on the phone's one-tap food row. A flag on
+    # the food rather than a separate list, so deleting the food takes its
+    # shortcut with it and nothing can point at a food that is gone.
+    favourite: bool = False
     id: int | None = None
 
     @property
@@ -103,9 +107,16 @@ class MealItem:
     carbs_g: float | None = None
     calories: float | None = None
     description: str = ""
+    # Free-form markers on the line. The one the app writes itself is
+    # "estimate": a quick-carbs line ("something, about 40 g") whose figure is a
+    # guess rather than a count, so analysis can tell the two apart.
     tags: str = ""
     food_id: int | None = None
     id: int | None = None
+
+    @property
+    def estimate(self) -> bool:
+        return "estimate" in self.tags.split(",")
 
 
 @dataclass
@@ -177,4 +188,5 @@ class MealTemplate:
 
     name: str
     items: list[MealTemplateItem] = field(default_factory=list)
+    favourite: bool = False  # a tile on the phone's food sheet (see Food.favourite)
     id: int | None = None
