@@ -159,3 +159,27 @@ LibreLinkUp, notify or VictoriaMetrics sections, so it can't poll the account
 or write anywhere but its own copy. Glucose is frozen at the snapshot time.
 Refresh the snapshot with the same `sqlite3` backup used to make it, then
 restart.
+
+## Beta on the live instance
+
+Since 2026-10-20 the live serve host runs the `redesign` branch as a beta, swapped in for master. Before
+the swap it ran `a09f171` (master minus a docs-only commit). A DB backup taken just before the swap is kept
+on the host next to the app, named `sugardaddy-pre-redesign-<timestamp>.db`.
+
+**Going back to the old design loses no data.** The redesign's schema changes are additive only (the
+`settings` and `settings_history` tables, and `favourite` on foods and saved meals). Master's code was run
+against a DB migrated and written to by the redesign: every page and API answered, it showed the
+redesign's meals (estimates and one-off lines included), and it could still write. To revert, on the host
+in the repo clone (root-owned, so `sudo` and a `safe.directory` exception):
+
+```
+sudo git -c safe.directory="$PWD" checkout master
+sudo bash deploy/install-server.sh
+```
+
+After a revert, what only the redesign uses stays in the DB, unused: desktop-edited settings (the old code
+reads `config.toml` alone again), favourites, dose buttons. The backup is for damage, not for reverting:
+restoring it would throw away everything logged since the swap.
+
+To ship further redesign changes to the beta: push `redesign`, then on the host `sudo git pull --ff-only`
+and `sudo bash deploy/install-server.sh`.
