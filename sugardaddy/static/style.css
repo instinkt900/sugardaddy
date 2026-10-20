@@ -450,33 +450,53 @@ body.phone { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 
 /* ---------------- Desktop ---------------- */
 
-.desk-wrap { max-width: 1200px; margin: 0 auto; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
-.desk-header { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
-.desk-header h1 { margin: 0; font-size: 22px; }
+/* The console: denser than the phone, same palette. Every view is a stack of
+   panels; tables are where the detail lives. */
+.desk-wrap { max-width: 1240px; margin: 0 auto; padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 18px; }
+.desk-header { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.desk-brand { font-weight: 800; font-size: 20px; display: flex; align-items: center; gap: 8px; }
+.desk-nav { display: flex; gap: 4px; padding: 4px; background: var(--surface-2); border-radius: 14px; }
+.desk-nav button {
+  border: none; background: none; border-radius: 10px; padding: 8px 16px;
+  font-weight: 700; font-size: 15px; color: var(--text-2);
+}
+.desk-nav button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.nav-badge { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--warn); color: #fff; font-size: 12px; line-height: 20px; text-align: center; margin-left: 4px; }
+.nav-badge[hidden] { display: none; }
+.view { display: flex; flex-direction: column; gap: 18px; }
+.view[hidden] { display: none; }
 .range-picker { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.range-picker label { flex-direction: row; align-items: center; gap: 6px; color: var(--muted); }
+/* The range drives Overview, Logbook and Meals; on the other views it stays
+   visible (it is still the window they come back to) but steps back. */
+.range-picker.dim { opacity: .35; pointer-events: none; }
+.range-picker label { flex-direction: row; align-items: center; gap: 6px; color: var(--text-2); }
 .range-picker input { padding: 8px; font-size: 14px; }
 .range-presets { display: flex; gap: 4px; }
 .range-presets button {
-  padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--card); color: var(--text);
+  padding: 7px 13px; border-radius: 10px; border: none;
+  background: var(--surface); color: var(--text); font-weight: 700; box-shadow: var(--shadow);
 }
-.range-presets button.active { border-color: var(--accent); background: var(--card-2); }
+.range-presets button.active { background: var(--accent); color: var(--accent-ink); }
 /* Whether the window is following "now" or held still for investigation. */
 .range-live { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .range-live.frozen { color: var(--accent); }
 .phone-link { margin-left: auto; }
 
 .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-.stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-.stat-label { color: var(--muted); font-size: 13px; }
-.stat-value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+.stat { background: var(--surface); box-shadow: var(--shadow); border-radius: var(--radius); padding: 16px 18px; }
+.stat-label { color: var(--text-2); font-size: 13px; font-weight: 700; }
+.stat-value { font-size: 28px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
 
 .desk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.panel h2 { font-size: 16px; margin: 0 0 8px; }
-.add-btn { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--accent); background: transparent; color: var(--accent); }
+.panel { background: var(--surface); box-shadow: var(--shadow); border-radius: var(--radius); padding: 18px 20px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.panel h2 { font-size: 17px; font-weight: 800; margin: 0 0 8px; }
+.panel-head h2 { margin: 0; }
+.panel-note { margin: 0 0 10px; font-size: 13.5px; max-width: 80ch; }
+.panel-tools { display: flex; gap: 8px; align-items: center; }
+.panel-tools input { padding: 7px 10px; font-size: 14px; }
+.add-btn { padding: 7px 14px; border-radius: 10px; border: none; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.add-btn[hidden] { display: none; }
 
 .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .data-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
@@ -492,6 +512,7 @@ body.phone { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
    peeks at the bottom — that's the only hint the list continues. border-collapse
    drops the sticky header's border while scrolling, so draw it as a shadow. */
 .table-scroll { max-height: 570px; overflow-y: auto; }
+.table-scroll.tall { max-height: 75vh; }
 .table-scroll .data-table th {
   position: sticky; top: 0; z-index: 1;
   background: var(--card); border-bottom: none;
@@ -529,7 +550,7 @@ body.phone { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
    when sibling cells wrap to two lines; space the buttons inline instead */
 .row-actions { white-space: nowrap; vertical-align: middle; }
 .row-actions .icon-btn + .icon-btn { margin-left: 6px; }
-.icon-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 4px 8px; }
+.icon-btn { background: var(--surface-2); border: 1px solid transparent; color: var(--text-2); border-radius: 8px; padding: 4px 10px; font-weight: 600; }
 .icon-btn.danger { color: var(--low); border-color: var(--low); }
 .icon-btn.save { color: var(--in); border-color: var(--in); }
 
@@ -548,7 +569,8 @@ body.phone { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 .me-ref { max-width: 420px; }
 
 .templates-list { display: flex; flex-direction: column; gap: 8px; }
-.tmpl { background: var(--card-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.tmpl { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; }
+.tmpl-uses { font-size: 13px; white-space: nowrap; }
 .tmpl-head { display: flex; align-items: center; gap: 12px; }
 .tmpl-name { font-weight: 600; }
 .tmpl-summary { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -578,3 +600,24 @@ body.phone { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .desk-grid { grid-template-columns: 1fr; }
 }
+
+/* Favourite stars: one click toggles a food or meal onto the phone. */
+.star-col { width: 34px; }
+.star { border: none; background: none; font-size: 19px; line-height: 1; color: var(--line); padding: 2px 4px; }
+.star:hover { color: var(--warn); }
+.star.on { color: var(--warn); }
+.tmpl-head .star { flex: none; }
+
+/* Phone setup */
+.presets-editor { display: flex; flex-direction: column; gap: 10px; }
+.preset-row { display: grid; grid-template-columns: 110px 1fr 90px; gap: 12px; align-items: center; }
+.preset-kind { font-weight: 800; }
+.preset-chips, .preview-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.preset-add { padding: 7px 10px; font-size: 14px; }
+.pchip { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); border-radius: 999px; padding: 5px 12px; font-weight: 700; font-size: 14px; }
+.pchip.fav { background: var(--warn-soft); }
+.pchip-x { border: none; background: none; color: var(--text-2); font-size: 16px; padding: 0 0 0 4px; line-height: 1; }
+.pchip-x:hover { color: var(--bad); }
+.phone-preview { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.phone-preview h3 { font-size: 14px; color: var(--text-2); margin: 0 0 8px; }
+.foot { display: flex; justify-content: center; font-size: 13px; }

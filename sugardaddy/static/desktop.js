@@ -207,7 +207,8 @@
       fetch("/api/stats" + qs).then((r) => r.json()),
       fetch("/api/foods").then((r) => r.json()),
       fetch("/api/meal-templates").then((r) => r.json()),
-    ]).then(([timeline, entries, stats, foods, templates]) => {
+      fetch("/api/missing-carbs").then((r) => r.json()),
+    ]).then(([timeline, entries, stats, foods, templates, todo]) => {
       if (seq !== loadSeq) return; // superseded by a newer load
       FOODS = foods;
       populateFoodsDatalist();
@@ -216,6 +217,8 @@
       renderStats(stats);
       renderFoods(foods);
       renderTemplates(templates);
+      renderTodo(todo);
+      loadPhone();
       // Its own window, but still refreshed here so an edit or a new entry shows
       // up in the rollup without needing the day picker touched.
       loadDaily();
@@ -766,7 +769,7 @@
         <thead><tr><th>Food</th><th>Carbs</th><th>Cal</th><th>Count</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
-      ${m ? "" : mealRefMarkup()}
+      ${SD.refMarkup("me-ref")}
       <div class="me-actions">
         <button type="button" class="icon-btn me-additem">+ Item</button>
         <span style="flex:1"></span>
@@ -778,14 +781,14 @@
     const tbody = root.querySelector(".me-items tbody");
     (m ? m.items : []).forEach((it) => tbody.appendChild(itemRow(it)));
     if (!m) tbody.appendChild(itemRow({}));
-    // Only a plate being logged now gets the reference: it is evaluated against
-    // the *current* glucose and IOB, which says nothing about a meal from
-    // Tuesday, so editing an existing row shows no panel at all.
-    const refresh = m ? null : attachMealRef(root, tbody);
-    root.querySelector(".me-additem").onclick = () => { tbody.appendChild(itemRow({})); if (refresh) refresh(); };
+    // A new plate is judged against now; an existing one against its own
+    // moment — the glucose and active insulin when it was eaten — so fixing
+    // Tuesday's chips shows what Tuesday's corrected plate asked for.
+    const refresh = attachMealRef(root, tbody, m ? m.id : null);
+    root.querySelector(".me-additem").onclick = () => { tbody.appendChild(itemRow({})); refresh(); };
     // input covers typing; change catches a library food filling the macros in;
     // click catches a row being removed. All three land on the same debounce.
-    if (refresh) ["input", "change", "click"].forEach((e) => tbody.addEventListener(e, refresh));
+    ["input", "change", "click"].forEach((e) => tbody.addEventListener(e, refresh));
     root.querySelector(".me-cancel").onclick = load;
     root.querySelector(".me-save").onclick = () => {
       const body = {
@@ -801,28 +804,9 @@
   }
 
   // ---- experimental bolus reference (see sugardaddy/bolus.py) -------------
-  // The desktop twin of the phone's meal-ref panel, sharing its markup and CSS:
-  // the same formula the post-meal table replays retrospectively, run against
-  // the plate being typed. A figure to reconcile an intended dose against, never
-  // an amount to give — so it stays stacked (correction, plate, sum, and the
-  // depot below the rule) and names the inputs it went without.
-  function mealRefMarkup() {
-    return `<section class="meal-ref me-ref" hidden aria-live="polite">
-      <dl class="mr-stack">
-        <div class="mr-row"><dt>Correction</dt>
-          <dd class="mr-num mr-corr">—</dd><dd class="mr-note muted mr-corr-note"></dd></div>
-        <div class="mr-row"><dt>This plate</dt>
-          <dd class="mr-num mr-meal">—</dd><dd class="mr-note muted mr-meal-note"></dd></div>
-        <div class="mr-row mr-total"><dt>Together</dt>
-          <dd class="mr-num mr-total-val">—</dd><dd class="mr-note muted"></dd></div>
-        <div class="mr-row mr-iob"><dt>Active insulin</dt>
-          <dd class="mr-num mr-iob-val">—</dd>
-          <dd class="mr-note muted">already on board, not deducted</dd></div>
-      </dl>
-      <div class="mr-why"></div>
-      <p class="mr-caveat muted">Experimental — your configured ISF/ICR, not advice.</p>
-    </section>`;
-  }
+  // The shared panel (SD.refMarkup / SD.renderRef — the phone uses the same
+  // one), fed from the plate as typed. A figure to reconcile an intended dose
+  // against, never an amount to give.
 
   // Carb total for the plate as typed, plus whether *every* named row fed it. A
   // plate where half the rows have no carb count still totals to a number, and
@@ -837,77 +821,25 @@
     return { grams: counted ? Math.round(total * 10) / 10 : null, complete: rows > 0 && counted === rows };
   }
 
-  function attachMealRef(root, tbody) {
+  function attachMealRef(root, tbody, mealId) {
     const el = root.querySelector(".me-ref");
-    if (!el) return null;
-    const q = (c) => el.querySelector("." + c);
-    const uStr = (n) => `${Math.round(n * 10) / 10}u`;
-    const signedU = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${uStr(Math.abs(n))}`;
     let off = false;   // no ISF configured: the panel doesn't exist at all
     let timer = null;
-
-    // Everything the figure had to do without, worst first. The plate's own carb
-    // gaps are only visible here (the server sees a total, not which rows fed
-    // it), so they're folded in alongside the server's `missing` list.
-    function reasons(missing, d, carbsComplete) {
-      const why = [];
-      if (missing.includes("glucose")) {
-        why.push(d.glucose == null ? "there's no glucose reading yet"
-                                   : "the last glucose reading is too old to correct against");
-      }
-      if (missing.includes("isf")) why.push("no ISF is configured");
-      if (missing.includes("icr")) why.push("no carb ratio is configured");
-      if (missing.includes("carbs")) why.push("no carbs are entered yet");
-      else if (!carbsComplete) why.push("not every item on the plate has a carb count");
-      return why;
-    }
-
-    function render(d, carbs) {
-      if (!d.enabled) { off = true; el.hidden = true; return; }
-      const r = d.ref || {};
-      // A "*" marks a figure built from only some of its inputs — the same
-      // convention as the post-meal table and the report, so an incomplete 1.2u
-      // can't be read as "barely dose here" when the carbs simply aren't in yet.
-      const why = reasons(r.missing || [], d, carbs.complete);
-      const star = why.length ? "*" : "";
-      el.hidden = false;
-      el.classList.toggle("mr-partial", why.length > 0);
-
-      q("mr-corr").textContent = r.correction_units == null ? "—" : signedU(r.correction_units);
-      if (d.glucose != null && !d.glucose_stale) {
-        // Both to the precision the unit is conventionally quoted at — JSON
-        // hands back 7.0 as 7, and "at 5.1, target 7" reads like two scales.
-        const g = (n) => n.toFixed(d.units === "mg/dL" ? 0 : 1);
-        q("mr-corr-note").textContent = `at ${g(d.glucose)}, target ${g(d.target)} ${d.units}`;
-      } else {
-        q("mr-corr-note").textContent = d.glucose == null ? "no reading" : "reading too old";
-      }
-
-      q("mr-meal").textContent = r.carb_units == null ? "—" : uStr(r.carb_units);
-      q("mr-meal-note").textContent = carbs.grams == null ? "no carbs entered" : `${carbs.grams} g carbs`;
-
-      q("mr-total-val").textContent = r.suggested_units == null ? "—" : `≈${uStr(r.suggested_units)}${star}`;
-      // Deliberately NOT deducted from the figure above: a plate fully covered
-      // an hour ago would otherwise report 0 u for the carbs going in now.
-      q("mr-iob-val").textContent = r.iob_units ? uStr(r.iob_units) : "none";
-
-      q("mr-why").textContent = why.length ? `* ${why.join("; ")}` : "";
-    }
-
     function fetchRef() {
       if (!root.isConnected) return;   // editor closed under a pending timer
       const carbs = plateCarbs(tbody);
-      const qs = carbs.grams != null ? `?carbs=${encodeURIComponent(carbs.grams)}` : "";
-      fetch(`/api/bolus-reference${qs}`)
+      const qs = new URLSearchParams();
+      if (carbs.grams != null) qs.set("carbs", carbs.grams);
+      if (mealId != null) qs.set("meal_id", mealId);
+      fetch(`/api/bolus-reference?${qs}`)
         .then((r) => r.json())
-        .then((d) => render(d, carbs))
+        .then((d) => { if (!SD.renderRef(el, d, carbs)) off = !d.enabled; })
         .catch(() => {});
     }
-
     // Debounced: typing a carb count fires per keystroke, and a reference that
     // flickers through three values on the way to one is harder to trust.
     function refresh() {
-      if (off) return;
+      if (off || !el) return;
       clearTimeout(timer);
       timer = setTimeout(fetchRef, 250);
     }
@@ -916,50 +848,53 @@
   }
 
   // ---- foods (library) ----
-  // Foods with no carb count yet are a to-do list, not just incomplete rows:
-  // every one of them is a plate the carb analysis can't read. They sit at the
-  // top under their own heading so filling them in is a task you can work
-  // through, and drop into the alphabetical list below as soon as they're done.
+  // Foods with no carb count show a dash; chasing them up happens in the
+  // "Still need carbs" panel above, which works by name across every logged
+  // line and fills the library food too, so the table no longer keeps a to-do
+  // group of its own.
+  // Most eaten first: the regulars are the rows worth keeping tidy, and the
+  // tail of never- or once-used foods is what clutters the phone's search.
+  const byUse = (a, b) => (b.uses - a.uses) || a.name.localeCompare(b.name);
   function renderFoods(list) {
     const tb = document.querySelector("#foods-table tbody");
     tb.innerHTML = "";
-    const pending = list.filter((f) => f.pending);
-    const known = list.filter((f) => !f.pending);
-    if (pending.length) {
-      tb.appendChild(foodGroupRow(`Awaiting details — ${pending.length} food${pending.length === 1 ? "" : "s"} logged without carbs`));
-      pending.forEach((f) => tb.appendChild(foodRow(f)));
-      if (known.length) tb.appendChild(foodGroupRow("Saved foods"));
-    }
-    known.forEach((f) => tb.appendChild(foodRow(f)));
-  }
-
-  function foodGroupRow(label) {
-    const tr = document.createElement("tr");
-    tr.className = "group-row";
-    tr.innerHTML = `<td colspan="5">${esc(label)}</td>`;
-    return tr;
+    const q = (document.getElementById("food-filter").value || "").trim().toLowerCase();
+    list = list.filter((f) => !q || f.name.toLowerCase().includes(q)).slice().sort(byUse);
+    list.forEach((f) => tb.appendChild(foodRow(f)));
   }
 
   function foodRow(f) {
     const tr = document.createElement("tr");
     if (f.pending) tr.className = "food-pending";
-    tr.innerHTML = `<td>${esc(f.name)}</td><td>${esc(f.description)}</td>
+    tr.innerHTML = `${starCell(f.favourite)}<td>${esc(f.name)}</td><td>${esc(f.description)}</td>
       <td>${f.carbs_g ?? `<span class="muted">—</span>`}</td>
       <td>${f.calories ?? ""}</td>
+      <td class="${f.uses > 1 ? "" : "muted"}">${f.uses ? f.uses + "×" : "never"}</td>
+      <td class="muted">${f.last_used ? SD.tableStamp(f.last_used).split(" ")[0] : ""}</td>
       <td class="row-actions"><button class="icon-btn" data-act="edit">Edit</button>
       <button class="icon-btn danger" data-act="del">✕</button></td>`;
     tr.querySelector('[data-act="del"]').onclick = () => del("foods", f.id);
     tr.querySelector('[data-act="edit"]').onclick = () => editFood(tr, f);
+    tr.querySelector(".star").onclick = () => patch("foods", f.id, { favourite: !f.favourite });
     return tr;
+  }
+
+  // A favourite toggle. It edits nothing but the shortcut, so it saves on
+  // click rather than going through an Edit/Save row.
+  function starCell(on) {
+    return `<td class="star-col"><button type="button" class="star${on ? " on" : ""}"
+      title="${on ? "On the phone's shortcuts — click to remove" : "Add to the phone's shortcuts"}">${on ? "★" : "☆"}</button></td>`;
   }
 
   function foodEditCells(f) {
     f = f || {};
     return `
+      <td class="star-col"></td>
       <td><input type="text" class="f-name" value="${attr(f.name || "")}" placeholder="name"></td>
       <td><input type="text" class="f-desc" value="${attr(f.description || "")}" placeholder="description"></td>
       <td><input type="number" step="1" min="0" class="f-carbs" value="${f.carbs_g ?? ""}" placeholder="carbs" style="width:66px"></td>
       <td><input type="number" step="1" min="0" class="f-cal" value="${f.calories ?? ""}" placeholder="cal" style="width:66px"></td>
+      <td></td><td></td>
       <td class="row-actions"><button class="icon-btn save">Save</button>
       <button class="icon-btn" data-act="cancel">Cancel</button></td>`;
   }
@@ -989,7 +924,7 @@
     const wrap = document.getElementById("templates-list");
     wrap.innerHTML = "";
     if (!list.length) { wrap.innerHTML = `<p class="muted">No saved meals yet.</p>`; return; }
-    list.forEach((t) => wrap.appendChild(templateBlock(t)));
+    list.slice().sort(byUse).forEach((t) => wrap.appendChild(templateBlock(t)));
   }
 
   function templateBlock(t) {
@@ -997,13 +932,16 @@
     div.className = "tmpl";
     const summary = (t.items || []).map((i) => `${+i.count || 1}× ${i.name}`).join(", ") || "(empty)";
     div.innerHTML = `<div class="tmpl-head">
+      <button type="button" class="star${t.favourite ? " on" : ""}" title="Phone tile">${t.favourite ? "★" : "☆"}</button>
       <span class="tmpl-name">${esc(t.name)}</span>
       <span class="tmpl-summary muted">${esc(summary)}</span>
+      <span class="tmpl-uses muted">${t.uses ? `logged ${t.uses}×` : "never logged"}</span>
       <span style="flex:1"></span>
       <button class="icon-btn t-edit">Edit</button>
       <button class="icon-btn danger t-del">✕</button></div>`;
     div.querySelector(".t-del").onclick = () => del("meal-templates", t.id);
     div.querySelector(".t-edit").onclick = () => openTemplateEditor(div, t);
+    div.querySelector(".star").onclick = () => patch("meal-templates", t.id, { favourite: !t.favourite });
     return div;
   }
 
@@ -1128,6 +1066,124 @@
       .filter((i) => i.name);
   }
 
+  // ---- missing carbs (the to-do) ----
+  // Plate lines with no carb count, by name. Filling one is completing those
+  // entries, not rewriting them — the server only writes blanks.
+  function renderTodo(rows) {
+    const tb = document.querySelector("#todo-table tbody");
+    const badge = document.getElementById("lib-badge");
+    badge.hidden = !rows.length;
+    badge.textContent = rows.length;
+    tb.innerHTML = "";
+    if (!rows.length) {
+      tb.innerHTML = `<tr><td colspan="7" class="muted">Nothing waiting — every logged item has a carb count.</td></tr>`;
+      return;
+    }
+    rows.forEach((t) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${esc(t.name)}</td><td>${t.count}×</td><td class="muted">${esc(t.local.split(" ")[0])}</td>
+        <td><input type="number" class="t-carbs" min="0" step="1" placeholder="g" style="width:70px"></td>
+        <td><input type="number" class="t-cal" min="0" step="1" placeholder="cal" style="width:70px" value="${t.calories ?? ""}"></td>
+        <td><input type="checkbox" class="t-keep" title="Also add to your foods"></td>
+        <td class="row-actions"><button class="icon-btn save">Fill</button></td>`;
+      tr.querySelector(".save").onclick = () => {
+        const carbs = tr.querySelector(".t-carbs").value;
+        if (carbs === "") { alert("Enter the carbs first."); return; }
+        fetch("/api/missing-carbs", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: t.name, carbs_g: carbs, calories: tr.querySelector(".t-cal").value,
+                                 keep: tr.querySelector(".t-keep").checked }),
+        }).then(async (r) => {
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { alert(d.error || "Save failed."); return; }
+          tr.querySelector(".t-carbs").value = "";
+          load();
+        });
+      };
+      tb.appendChild(tr);
+    });
+  }
+  document.getElementById("food-filter").addEventListener("input", () => renderFoods(FOODS));
+
+  // ---- phone setup ----
+  // The dose chips are stored server-side (they're chosen here and read on the
+  // phone, so neither device's own storage will do). Until someone edits them
+  // they are the user's own most-used amounts, which the server works out.
+  const KIND_NAMES = { bolus: "Bolus", correction: "Correction", basal: "Basal" };
+  let presets = null;
+
+  function loadPhone() {
+    Promise.all([
+      fetch("/api/settings/dose-presets").then((r) => r.json()),
+      fetch("/api/shortcuts").then((r) => r.json()),
+    ]).then(([p, sc]) => {
+      if (!document.querySelector("#presets-editor input:focus")) renderPresets(p);
+      document.getElementById("preview-meals").innerHTML =
+        sc.meals.map((t) => `<span class="pchip${t.favourite ? " fav" : ""}">${t.favourite ? "★ " : ""}${esc(t.name)}</span>`).join("") || `<span class="muted">none yet</span>`;
+      document.getElementById("preview-foods").innerHTML =
+        sc.foods.map((f) => `<span class="pchip${f.favourite ? " fav" : ""}">${f.favourite ? "★ " : ""}${esc(f.name)} · ${f.carbs_g}g</span>`).join("") || `<span class="muted">none yet</span>`;
+    }).catch(() => {});
+  }
+
+  function renderPresets(p) {
+    presets = p;
+    document.getElementById("presets-status").textContent = p.custom
+      ? "Set by hand. The phone shows these under the insulin stepper."
+      : "Learned from your last 90 days — the amounts you log most. Edit them to set your own.";
+    document.getElementById("presets-reset").hidden = !p.custom;
+    const box = document.getElementById("presets-editor");
+    box.innerHTML = ["bolus", "correction", "basal"].map((k) => `
+      <div class="preset-row" data-kind="${k}">
+        <span class="preset-kind">${KIND_NAMES[k]}</span>
+        <span class="preset-chips">${(p.presets[k] || []).map((u) =>
+          `<span class="pchip">${u} u<button type="button" class="pchip-x" data-u="${u}" title="Remove">×</button></span>`).join("")}</span>
+        <input type="number" class="preset-add" min="0" step="0.5" placeholder="+ u" aria-label="Add a ${KIND_NAMES[k]} amount">
+      </div>`).join("");
+    box.querySelectorAll(".preset-row").forEach((row) => {
+      const k = row.dataset.kind;
+      row.querySelectorAll(".pchip-x").forEach((x) => x.onclick = () =>
+        savePresets(k, (presets.presets[k] || []).filter((u) => u !== parseFloat(x.dataset.u))));
+      const add = row.querySelector(".preset-add");
+      add.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        const u = parseFloat(add.value);
+        if (u > 0) savePresets(k, [...(presets.presets[k] || []), u]);
+      });
+      add.addEventListener("change", () => {
+        const u = parseFloat(add.value);
+        if (u > 0) savePresets(k, [...(presets.presets[k] || []), u]);
+      });
+    });
+  }
+  function savePresets(kind, list) {
+    const next = { ...presets.presets, [kind]: list };
+    putPresets(next);
+  }
+  function putPresets(value) {
+    fetch("/api/settings/dose-presets", {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ presets: value }),
+    }).then((r) => r.json()).then(renderPresets);
+  }
+  document.getElementById("presets-reset").onclick = () => putPresets(null);
+
+  // ---- views ----
+  // One page, five views. The current one is remembered with the rest of the
+  // view state, and is in the URL hash so a link (or a reload) lands on it.
+  const VIEWS = ["overview", "logbook", "meals", "library", "phone"];
+  function showView(v) {
+    if (!VIEWS.includes(v)) v = "overview";
+    document.querySelectorAll(".desk-nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
+    document.querySelectorAll(".view").forEach((el) => { el.hidden = el.dataset.view !== v; });
+    // The range only means something to the time-based views.
+    document.getElementById("range-bar").classList.toggle("dim", v === "library" || v === "phone");
+    if (location.hash.slice(1) !== v) history.replaceState(null, "", "#" + v);
+    savePrefs({ view: v });
+    // A chart built while its view was hidden measured itself at zero.
+    if (v === "overview" && chart) chart.resize();
+  }
+  document.querySelectorAll(".desk-nav button").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+  window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
+
   // ---- add buttons ----
   document.querySelectorAll(".add-btn[data-add]").forEach((btn) => {
     btn.addEventListener("click", () => addRow(btn.dataset.add));
@@ -1228,10 +1284,14 @@
   // ---- live auto-refresh ----
   const REFRESH_MS = 60000;
   function isEditing() {
-    return !!document.querySelector(
+    // The to-do's carb boxes are always on the page, so only a filled-in one
+    // (or a focused one) counts as an edit in progress.
+    const todoBusy = [...document.querySelectorAll("#todo-table input[type=number]")]
+      .some((i) => i.value !== "" || i === document.activeElement);
+    return todoBusy || !!document.querySelector(
       "#insulin-table input, #insulin-table select, #meal-table input, #meal-table select, " +
       "#note-table input, #note-table textarea, " +
-      "#foods-table input, #templates-list input, #templates-list select"
+      "#foods-table input, #templates-list input, #templates-list select, #presets-editor input:focus"
     );
   }
   function autoRefresh() {
@@ -1266,6 +1326,7 @@
     selectPreset(document.querySelector('.range-picker .range-presets button[data-hours="24"]'));
   }
   if (prefs.days) setDailyDays(prefs.days, false);
+  showView(location.hash.slice(1) || prefs.view || "overview");
   window.addEventListener("load", load);
   setInterval(autoRefresh, REFRESH_MS);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) autoRefresh(); });

@@ -2,125 +2,192 @@
 {% block title %}Sugar Daddy · desktop{% endblock %}
 {% block body_class %}desktop{% endblock %}
 
+{#
+  The management console: everything over time, and everything that sets up
+  the phone. One page split into views rather than one long scroll, so review
+  (Overview, Meals), record-keeping (Logbook) and setup (Library, Phone) each
+  have a place. The range picker drives the three time-based views.
+#}
+
 {% block content %}
 <div class="desk-wrap">
   <header class="desk-header">
-    <h1>Sugar Daddy</h1>
-    <div class="range-picker">
-      <label>From <input type="datetime-local" id="range-from"></label>
-      <label>To <input type="datetime-local" id="range-to"></label>
-      <div class="range-presets">
-        <button data-hours="12">12h</button>
-        <button data-hours="24">24h</button>
-        <button data-hours="72">3d</button>
-        <button data-hours="168">7d</button>
-        <button data-hours="720">30d</button>
-      </div>
-      <span id="range-live" class="range-live" title="A typed range holds still; pick a preset to follow now">live</span>
-    </div>
+    <div class="desk-brand"><span class="brand-drop" aria-hidden="true"></span>Sugar Daddy</div>
+    <nav class="desk-nav" role="tablist">
+      <button type="button" data-view="overview" class="active">Overview</button>
+      <button type="button" data-view="logbook">Logbook</button>
+      <button type="button" data-view="meals">Meals</button>
+      <button type="button" data-view="library">Library <span id="lib-badge" class="nav-badge" hidden></span></button>
+      <button type="button" data-view="phone">Phone</button>
+    </nav>
     <a class="phone-link" href="/">Phone view</a>
   </header>
 
-  <section class="stats-row" id="stats-row">
-    <div class="stat"><div class="stat-label">Time in range</div><div class="stat-value" id="stat-tir">—</div></div>
-    <div class="stat"><div class="stat-label">Average</div><div class="stat-value" id="stat-avg">—</div></div>
-    <div class="stat"><div class="stat-label">GMI (est.)</div><div class="stat-value" id="stat-gmi">—</div></div>
-    <div class="stat"><div class="stat-label">Lows / Highs</div><div class="stat-value" id="stat-lowhigh">—</div></div>
-    <div class="stat"><div class="stat-label">Readings</div><div class="stat-value" id="stat-count">—</div></div>
-  </section>
+  <div class="range-picker" id="range-bar">
+    <div class="range-presets">
+      <button data-hours="12">12h</button>
+      <button data-hours="24">24h</button>
+      <button data-hours="72">3d</button>
+      <button data-hours="168">7d</button>
+      <button data-hours="720">30d</button>
+    </div>
+    <label>From <input type="datetime-local" id="range-from"></label>
+    <label>To <input type="datetime-local" id="range-to"></label>
+    <span id="range-live" class="range-live" title="A typed range holds still; pick a preset to follow now">live</span>
+  </div>
 
-  <section class="chart-card big">
-    <canvas id="main-chart" height="120"></canvas>
-  </section>
-
-  <div class="desk-grid">
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Insulin</h2>
-        <button class="add-btn" data-add="insulin">+ Add</button>
-      </div>
-      <table class="data-table" id="insulin-table">
-        <thead><tr><th>Time</th><th>Units</th><th>Type</th><th>Note</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
+  <!-- ===================== Overview ===================== -->
+  <div class="view" data-view="overview">
+    <section class="stats-row" id="stats-row">
+      <div class="stat"><div class="stat-label">Time in range</div><div class="stat-value" id="stat-tir">—</div></div>
+      <div class="stat"><div class="stat-label">Average</div><div class="stat-value" id="stat-avg">—</div></div>
+      <div class="stat"><div class="stat-label">GMI (est.)</div><div class="stat-value" id="stat-gmi">—</div></div>
+      <div class="stat"><div class="stat-label">Lows / Highs</div><div class="stat-value" id="stat-lowhigh">—</div></div>
+      <div class="stat"><div class="stat-label">Readings</div><div class="stat-value" id="stat-count">—</div></div>
     </section>
 
+    <section class="chart-card big">
+      <canvas id="main-chart" height="120"></canvas>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Daily intake</h2>
+        <div class="day-picker">
+          <div class="range-presets day-presets">
+            <button data-days="3">3d</button>
+            <button data-days="7" class="active">7d</button>
+            <button data-days="30">30d</button>
+          </div>
+          <label class="day-custom">Days
+            <input type="number" id="daily-days" min="1" max="365" step="1" value="7" aria-label="Days to summarize">
+          </label>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="daily-table">
+          <thead><tr><th>Day</th><th>Glucose</th><th>Carbs</th><th>Calories</th><th>Insulin</th><th>Meals</th><th>Doses</th></tr></thead>
+          <tbody></tbody>
+          <tfoot><tr id="daily-avg"></tr></tfoot>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===================== Logbook ===================== -->
+  <div class="view" data-view="logbook" hidden>
     <section class="panel">
       <div class="panel-head">
         <h2>Meals</h2>
         <button class="add-btn" data-add="meal">+ Add</button>
       </div>
+      <p class="panel-note muted">Editing a meal shows the bolus reference for the corrected plate, judged against the glucose and active insulin at the time it was eaten.</p>
       <table class="data-table" id="meal-table">
         <thead><tr><th>Time</th><th>Type</th><th>Meal</th><th>Carbs</th><th>Cal</th><th>Note</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
     </section>
+
+    <div class="desk-grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Insulin</h2>
+          <button class="add-btn" data-add="insulin">+ Add</button>
+        </div>
+        <table class="data-table" id="insulin-table">
+          <thead><tr><th>Time</th><th>Units</th><th>Type</th><th>Note</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Notes</h2>
+          <button class="add-btn" data-add="note">+ Add</button>
+        </div>
+        <table class="data-table" id="note-table">
+          <thead><tr><th>Time</th><th>Note</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </div>
   </div>
 
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Notes</h2>
-      <button class="add-btn" data-add="note">+ Add</button>
-    </div>
-    <table class="data-table" id="note-table">
-      <thead><tr><th>Time</th><th>Note</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </section>
-
-  <section class="panel">
-    <h2>Post-meal response (2h)</h2>
-    <table class="data-table" id="postmeal-table">
-      <thead><tr><th>Time</th><th>Meal</th><th>Carbs</th><th>Bolus</th><th>IOB</th><th class="ref-col">Ref</th><th class="ref-col">Δ Ref</th><th>Start</th><th>Peak</th><th>Δ Peak</th><th>→ Peak</th><th>End</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Daily intake</h2>
-      <div class="day-picker">
-        <div class="range-presets day-presets">
-          <button data-days="3">3d</button>
-          <button data-days="7" class="active">7d</button>
-          <button data-days="30">30d</button>
-        </div>
-        <label class="day-custom">Days
-          <input type="number" id="daily-days" min="1" max="365" step="1" value="7" aria-label="Days to summarize">
-        </label>
+  <!-- ===================== Meals (response) ===================== -->
+  <div class="view" data-view="meals" hidden>
+    <section class="panel">
+      <h2>Post-meal response (2h)</h2>
+      <div class="table-scroll tall">
+        <table class="data-table" id="postmeal-table">
+          <thead><tr><th>Time</th><th>Meal</th><th>Carbs</th><th>Bolus</th><th>IOB</th><th class="ref-col">Ref</th><th class="ref-col">Δ Ref</th><th>Start</th><th>Peak</th><th>Δ Peak</th><th>→ Peak</th><th>End</th></tr></thead>
+          <tbody></tbody>
+        </table>
       </div>
-    </div>
-    <div class="table-scroll">
-      <table class="data-table" id="daily-table">
-        <thead><tr><th>Day</th><th>Glucose</th><th>Carbs</th><th>Calories</th><th>Insulin</th><th>Meals</th><th>Doses</th></tr></thead>
-        <tbody></tbody>
-        <tfoot><tr id="daily-avg"></tr></tfoot>
-      </table>
-    </div>
-  </section>
+    </section>
+  </div>
 
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Foods</h2>
-      <button class="add-btn" data-add="food">+ Add</button>
-    </div>
-    <div class="table-scroll">
-      <table class="data-table" id="foods-table">
-        <thead><tr><th>Name</th><th>Description</th><th>Carbs</th><th>Cal</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
+  <!-- ===================== Library ===================== -->
+  <div class="view" data-view="library" hidden>
+    <section class="panel" id="todo-panel">
+      <div class="panel-head"><h2>Still need carbs</h2></div>
+      <p class="panel-note muted">Plate lines logged without a carb count, by name. Filling one completes every blank line with that name — a value already recorded is never changed. Tick “keep” to also add it to your foods.</p>
+      <div class="table-scroll">
+        <table class="data-table" id="todo-table">
+          <thead><tr><th>Name</th><th>Logged</th><th>Last</th><th>Carbs</th><th>Cal</th><th>Keep</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
 
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Saved meals</h2>
-      <button class="add-btn" id="add-template">+ Add</button>
-    </div>
-    <div id="templates-list" class="templates-list"></div>
-  </section>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Foods</h2>
+        <div class="panel-tools">
+          <input type="search" id="food-filter" placeholder="Filter foods" aria-label="Filter foods">
+          <button class="add-btn" data-add="food">+ Add</button>
+        </div>
+      </div>
+      <p class="panel-note muted">★ puts a food on the phone's one-tap row. Sorted by how often each is eaten; ones used once or never are candidates to tidy away (deleting a food never changes a logged meal).</p>
+      <div class="table-scroll">
+        <table class="data-table" id="foods-table">
+          <thead><tr><th class="star-col"></th><th>Name</th><th>Description</th><th>Carbs</th><th>Cal</th><th>Eaten</th><th>Last</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
 
-  <footer class="foot"><span class="muted">v{{ version }}</span></footer>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Saved meals</h2>
+        <button class="add-btn" id="add-template">+ Add</button>
+      </div>
+      <p class="panel-note muted">★ puts a meal on the phone's tiles. Logging a meal never changes these; edit them here.</p>
+      <div id="templates-list" class="templates-list"></div>
+    </section>
+  </div>
+
+  <!-- ===================== Phone ===================== -->
+  <div class="view" data-view="phone" hidden>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Dose buttons</h2>
+        <button class="add-btn" id="presets-reset">Use my most common doses</button>
+      </div>
+      <p class="panel-note muted" id="presets-status">The one-tap amounts under the insulin stepper on the phone, per type.</p>
+      <div id="presets-editor" class="presets-editor"></div>
+    </section>
+
+    <section class="panel">
+      <h2>What the phone offers</h2>
+      <p class="panel-note muted">Starred foods and meals first, then whatever has been eaten most in the last 30 days. Star things in the Library.</p>
+      <div class="phone-preview">
+        <div><h3>Saved meal tiles</h3><div id="preview-meals" class="preview-chips"></div></div>
+        <div><h3>Food buttons</h3><div id="preview-foods" class="preview-chips"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot"><span class="muted">v{{ version }} · not a medical device</span></footer>
 </div>
 
 <template id="kinds-data">{{ kinds|join(',') }}</template>
