@@ -23,3 +23,6 @@ dist/
 
 # machine-local skill connection details (never commit)
 connection.env
+
+# local staging instance (redesign branch)
+.staging/
