@@ -263,7 +263,14 @@
           .map((s, i) => `<li role="option" data-i="${i}"><span>${esc(s.name)}</span><span class="s-carb">${esc(rightLabel(s))}</span></li>`)
           .join("");
         list.querySelectorAll("li[data-i]").forEach((li) => {
-          li.addEventListener("pointerdown", (e) => { e.preventDefault(); onPick(filtered[+li.dataset.i]); close(); });
+          // Pick on click — a completed tap — never on pointerdown. A finger
+          // landing on the list to scroll it fires pointerdown too, and picking
+          // there selected whatever food happened to be under the start of the
+          // scroll. The browser withholds `click` from a gesture that moved, so
+          // this is the scroll/tap distinction for free. mousedown is still
+          // cancelled so the input keeps focus (and its keyboard) for the tap.
+          li.addEventListener("mousedown", (e) => e.preventDefault());
+          li.addEventListener("click", () => { onPick(filtered[+li.dataset.i]); close(); });
         });
       }
       list.hidden = false; input.setAttribute("aria-expanded", "true");
@@ -676,7 +683,7 @@
       chip.addEventListener("click", openPending);
       document.getElementById("pending-save").addEventListener("click", savePending);
       document.getElementById("pending-cancel").addEventListener("click", closePending);
-      pendSheet.addEventListener("click", (e) => { if (e.target === pendSheet) closePending(); });
+      SD.backdropClose(pendSheet, closePending);
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && !pendSheet.hidden) closePending();
       });
@@ -820,6 +827,7 @@
         editing = { kind, id };
         buildSheet(kind, entry);
         sheet.hidden = false;
+        SD.guardOpen(sheet);
       })
       .catch(() => toast("Couldn't open that entry."));
   }
@@ -868,7 +876,7 @@
     document.getElementById("sheet-delete").addEventListener("click", deleteEdit);
     document.getElementById("sheet-cancel").addEventListener("click", closeSheet);
     // Backdrop tap closes; a tap inside the panel must not.
-    sheet.addEventListener("click", (e) => { if (e.target === sheet) closeSheet(); });
+    SD.backdropClose(sheet, closeSheet);
     document.addEventListener("keydown", (e) => { if (e.key === "Escape" && editing) closeSheet(); });
 
     // Delegated from the document: the recent list is replaced wholesale by every

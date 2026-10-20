@@ -161,6 +161,33 @@ window.SD = {
     const top = Math.max(this.chartTop(units), dataMax || 0);
     return { dose: top * 0.04, meal: top * 0.10, note: top * 0.16 };
   },
+  // --- overlays and the finger that opened them ----------------------------
+  // A sheet opened by a long-press appears while the finger is still on the
+  // glass, so the release — and the click the browser synthesises from it —
+  // lands on whatever the sheet put under that finger: the backdrop (closing it
+  // again at once) or a button. For a moment after opening, the sheet swallows
+  // clicks outright; the press that opened it is not a press on the sheet.
+  guardOpen(sheet, ms = 400) {
+    const until = Date.now() + ms;
+    const swallow = (e) => {
+      if (Date.now() > until) { sheet.removeEventListener("click", swallow, true); return; }
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    sheet.addEventListener("click", swallow, true);
+  },
+  // Close on a backdrop tap only when the press both started and ended on the
+  // backdrop. A plain click-on-backdrop check also fires for a drag that began
+  // inside the panel (scrolling a long plate, say) and was released past its
+  // edge — the click lands on the common ancestor, which is the backdrop.
+  backdropClose(sheet, close) {
+    let downOnBackdrop = false;
+    sheet.addEventListener("pointerdown", (e) => { downOnBackdrop = e.target === sheet; });
+    sheet.addEventListener("click", (e) => {
+      if (e.target === sheet && downOnBackdrop) close();
+      downOnBackdrop = false;
+    });
+  },
   // Chart.js plugin: shade the in-range target band behind the series.
   targetBand(low, high) {
     return {
