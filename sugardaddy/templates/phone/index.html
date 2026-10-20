@@ -2,218 +2,101 @@
 {% block title %}Sugar Daddy{% endblock %}
 {% block body_class %}phone{% endblock %}
 
+{#
+  The phone is a status screen with three big buttons, not a stack of forms.
+  Home shows where things stand (the glucose, the depot, today's entries) and
+  nothing on it takes typing. Every action opens a full-screen sheet that is
+  finished with taps; the keyboard is the fallback for the odd amount, never
+  the way in. See docs/plans/redesign.md.
+
+  Sheets are declared here as empty shells with fixed ids and filled by
+  phone.js, so the markup stays readable and there is one of each.
+#}
+
+{% macro icon(name) -%}
+<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
+{%- if name == "insulin" -%}
+  <path d="M17 3l4 4M19 5l-3 3M14.5 5.5l4 4L9 19H5v-4z M8 12l2 2M11 9l2 2"/>
+{%- elif name == "food" -%}
+  <path d="M7 3v8M5 3v5a2 2 0 004 0V3M7 11v10M16 3c-2 1.5-3 4-3 7h3v11"/>
+{%- elif name == "note" -%}
+  <path d="M5 4h10l4 4v12H5z M14 4v5h5 M8 13h8M8 17h5"/>
+{%- elif name == "gear" -%}
+  <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+
 {% block content %}
-<main class="phone-wrap">
-
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-
-  <header id="current" class="current {% if current.has_reading %}{% if current.is_low %}is-low{% elif current.is_high %}is-high{% else %}in-range{% endif %}{% endif %}">
-    {% if current.has_reading %}
-      <div class="current-value">{{ current.value }}<span class="trend">{{ current.trend }}</span></div>
-      <div class="current-meta">{{ current.units }} · {{ current.minutes_ago }} min ago</div>
-    {% else %}
-      <div class="current-value">—</div>
-      <div class="current-meta">no glucose reading yet</div>
-    {% endif %}
+<main class="app" id="app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-drop" aria-hidden="true"></span>Sugar Daddy</div>
+    <button type="button" class="round-btn" id="open-settings" aria-label="Settings">{{ icon("gear") }}</button>
   </header>
 
-  <div class="io-tiles">
-    <div id="iob-tile" class="io-tile{% if not current.iob %} muted{% endif %}">
-      <div class="io-val">{% if current.iob %}≈{{ current.iob }} u{% else %}—{% endif %}</div>
-      <div class="io-lab">{% if current.iob %}on board{% if current.iob_dose_count %} · {{ current.iob_dose_count }} dose{{ 's' if current.iob_dose_count != 1 }}{% endif %}{% else %}no insulin on board{% endif %}</div>
-    </div>
-    <div id="act-tile" class="io-tile{% if current.activity_pct is none %} muted{% endif %}">
-      <div class="io-val">{% if current.activity_pct is not none %}{{ current.activity_pct }}%{% else %}—{% endif %}</div>
-      <div class="io-lab">{% if current.activity_pct is not none %}action {{ current.activity_dir }}{% else %}no action{% endif %}</div>
-    </div>
-  </div>
+  {# First paint is server-rendered so the number is there before any script
+     runs; phone.js keeps it fresh after that. #}
+  <section id="hero" class="hero {% if current.has_reading %}{% if current.is_low %}st-low{% elif current.is_high %}st-high{% else %}st-in{% endif %}{% else %}st-none{% endif %}">
+    {% if current.has_reading %}
+      <div class="hero-row"><span class="hero-val">{{ current.value }}</span><span class="hero-trend">{{ current.trend }}</span></div>
+      <div class="hero-meta"><span class="hero-state">{% if current.is_low %}Low{% elif current.is_high %}High{% else %}In range{% endif %}</span> · {{ current.minutes_ago }} min ago · {{ current.units }}</div>
+    {% else %}
+      <div class="hero-row"><span class="hero-val">—</span></div>
+      <div class="hero-meta">No glucose reading yet</div>
+    {% endif %}
+  </section>
 
-  {# No tick labels on the chart itself (see phone.js) — the span they used to
-     imply is stated once, here. #}
+  {# No tick labels: the phone chart answers "what shape am I in", and the
+     number above it is the number. The span is said once, at the two ends. #}
   <section class="chart-card">
-    {# The box, not the canvas, owns the height — see .chart-box in style.css. #}
     <div class="chart-box"><canvas id="mini-chart"></canvas></div>
-    <div id="chart-span" class="chart-span muted"></div>
+    <div class="chart-ends"><span>12 h ago</span><span>now</span></div>
   </section>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="insulin">Insulin</button>
-    <button class="tab" data-tab="meal">Meal</button>
-    <button class="tab" data-tab="note">Note</button>
-  </nav>
-
-  <section id="tab-insulin" class="logform">
-    <form hx-post="/api/insulin" hx-target="#recent" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) this.reset()">
-      <input type="number" name="units" step="0.5" min="0" inputmode="decimal" required autofocus placeholder="units" aria-label="Units">
-      <select name="kind" aria-label="Insulin type">
-        {% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
-      </select>
-      <div class="ts-row">
-        <input type="datetime-local" id="insulin-ts" name="ts" value="{{ now_input }}" aria-label="Time">
-        <button type="button" class="combo-btn now-btn" data-now="insulin-ts">Now</button>
-      </div>
-      <input type="text" name="note" placeholder="optional note" aria-label="Note">
-      <button type="submit" class="big-btn">Log insulin</button>
-    </form>
-  </section>
-
-  <section id="tab-meal" class="logform hidden">
-    <div id="meal-builder">
-      <div class="plate-build">
-        <ul id="plate-list" class="plate-list"></ul>
-        <p id="plate-empty" class="muted plate-empty">No items yet — add foods below.</p>
-        <div id="plate-totals" class="plate-totals muted"></div>
-
-        <div class="additem">
-          <div class="combo">
-            <div class="combo-field">
-              <input type="text" id="food-name" autocomplete="off"
-                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="food-suggest"
-                      placeholder="add a food — type to match the library">
-              <ul id="food-suggest" class="combo-list" role="listbox" hidden></ul>
-            </div>
-            <button type="button" id="save-to-library" class="combo-btn" title="Save this food to the library">+
-          </div>
-          <div class="additem-nums">
-            <label>Carbs (g)<input type="number" id="food-carbs" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
-            <label>Calories<input type="number" id="food-cal" step="1" min="0" inputmode="decimal" placeholder="opt"></label>
-            <label>Count<input type="number" id="food-count" step="0.5" min="0" value="1" inputmode="decimal"></label>
-            <button type="button" id="add-to-plate" class="combo-btn add-plate-btn">Add</button>
-          </div>
-        </div>
-
-        {# The to-do queue of foods logged without a carb count. Hidden outright
-           when there is nothing in it, so it costs the tab no room on the days
-           it has nothing to say — the only reason it can sit on a screen this
-           long at all. #}
-        <button type="button" id="pending-chip" class="pending-chip" hidden></button>
-      </div>
-
-      {# The plate comes first: building it is what every meal entry does. Naming
-         one (or loading a saved meal by name) is the occasional case, so it sits
-         down here with the rest of the optional detail rather than at the top
-         asking to be filled in first. #}
-      <p class="field-note muted">Optional: pick a saved meal or name this one to save it.</p>
-      <div class="combo">
-        <div class="combo-field">
-          <input type="text" id="meal-name" autocomplete="off"
-                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="tmpl-suggest"
-                  placeholder="meal name — type to pick a saved meal" aria-label="Meal name">
-          <ul id="tmpl-suggest" class="combo-list" role="listbox" hidden></ul>
-        </div>
-      </div>
-
-      <select id="meal-type" aria-label="Meal type">
-        <option value="">Meal type</option>
-        {% for t in meal_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
-      </select>
-
-      <div class="ts-row">
-        <input type="datetime-local" id="meal-ts" value="{{ now_input }}" aria-label="Time">
-        <button type="button" class="combo-btn now-btn" data-now="meal-ts">Now</button>
-      </div>
-
-      <input type="text" id="meal-note" placeholder="optional note" aria-label="Note">
-
-      {# Experimental live bolus reference for the plate as built so far. Hidden
-         until /api/bolus-reference says an ISF is configured; see bolus.py and
-         docs/plans/insulin-awareness.md for why it shows its components and is
-         worded as a cross-check rather than a dose. #}
-      <section id="meal-ref" class="meal-ref" hidden aria-live="polite">
-        {# Stacked, not summarised. The correction and the carb cover answer two
-           different questions, and active insulin answers a third — the total is
-           only there so the two halves above it don't have to be added in your
-           head. Active insulin is listed but NEVER deducted: netting it off
-           turned a second meal's real carbs into "0 u" (see bolus.py). #}
-        <dl class="mr-stack">
-          <div class="mr-row">
-            <dt>Correction</dt>
-            <dd id="mr-corr" class="mr-num">—</dd>
-            <dd id="mr-corr-note" class="mr-note muted"></dd>
-          </div>
-          <div class="mr-row">
-            <dt>This plate</dt>
-            <dd id="mr-meal" class="mr-num">—</dd>
-            <dd id="mr-meal-note" class="mr-note muted"></dd>
-          </div>
-          <div class="mr-row mr-total">
-            <dt>Together</dt>
-            <dd id="mr-total" class="mr-num">—</dd>
-            <dd class="mr-note muted"></dd>
-          </div>
-          <div class="mr-row mr-iob">
-            <dt>Active insulin</dt>
-            <dd id="mr-iob-val" class="mr-num">—</dd>
-            <dd class="mr-note muted">already on board, not deducted</dd>
-          </div>
-        </dl>
-        <div id="mr-why" class="mr-why"></div>
-        <p class="mr-caveat muted">Experimental — your configured ISF/ICR, not advice.</p>
-      </section>
-
-      <button type="button" id="log-meal" class="big-btn">Log meal</button>
-      <p id="meal-status" class="km-status muted"></p>
+  {# Descriptive only (Layer 1 of insulin-awareness.md): what is on board and
+     when the depot was last logged — never "due" or "take". #}
+  <section class="pills">
+    <div class="pill" id="iob-pill">
+      <span class="pill-val">{% if current.iob %}{{ current.iob }} u{% else %}None{% endif %}</span>
+      <span class="pill-lab">active insulin</span>
+    </div>
+    <div class="pill" id="basal-pill">
+      <span class="pill-val">{% if current.basal_hours_ago is not none %}{{ current.basal_hours_ago|round|int }} h ago{% else %}—{% endif %}</span>
+      <span class="pill-lab">last basal{% if current.basal_units %} · {{ current.basal_units|round(1) }} u{% endif %}</span>
     </div>
   </section>
 
-  {# Anything that colours the readings but isn't a dose or a plate — sickness,
-     exercise, a bad night. Just words and a time, on purpose: asking the user to
-     categorise the event first is how it ends up not logged at all. #}
-  <section id="tab-note" class="logform hidden">
-    <form hx-post="/api/note" hx-target="#recent" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) this.reset()">
-      <textarea name="text" rows="3" required placeholder="what happened — sickness, exercise, travel…" aria-label="Note"></textarea>
-      <div class="ts-row">
-        <input type="datetime-local" id="note-ts" name="ts" value="{{ now_input }}" aria-label="Time">
-        <button type="button" class="combo-btn now-btn" data-now="note-ts">Now</button>
-      </div>
-      <button type="submit" class="big-btn">Log note</button>
-    </form>
+  {# The missing-carbs to-do. Absent outright when there is nothing in it. #}
+  <button type="button" id="todo-chip" class="todo-chip" hidden></button>
+
+  <section class="today">
+    <h2 class="section-title">Today</h2>
+    <ul id="timeline" class="timeline"><li class="tl-empty">Loading…</li></ul>
   </section>
-
-  {% include "partials/recent.html" %}
-
-  {# The pending-food queue, opened from the chip on the Meal tab. Its own sheet
-     rather than a tab of its own: this is a chore you do when the chip says
-     there is one, not a place to navigate to. #}
-  <div id="pending-sheet" class="sheet" hidden>
-    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="pending-title">
-      <h3 id="pending-title">Foods awaiting carbs</h3>
-      <p class="field-note muted">Filling one in also completes the meals already logged with it.</p>
-      <ul id="pending-list" class="e-items"></ul>
-      <p id="pending-status" class="km-status muted"></p>
-      <div class="sheet-actions">
-        <button type="button" id="pending-save" class="big-btn">Save</button>
-      </div>
-      <button type="button" id="pending-cancel" class="sheet-cancel">Close</button>
-    </div>
-  </div>
-
-  {# Long-press an entry in the list above to edit or delete it (phone.js). The
-     sheet is built per entry type at open time — the shell is all that lives in
-     the markup, so there is one dialog rather than three. #}
-  <div id="entry-sheet" class="sheet" hidden>
-    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
-      <h3 id="sheet-title">Edit entry</h3>
-      <div id="sheet-body"></div>
-      <p id="sheet-status" class="km-status muted"></p>
-      <div class="sheet-actions">
-        <button type="button" id="sheet-delete" class="big-btn danger">Delete</button>
-        <button type="button" id="sheet-save" class="big-btn">Save</button>
-      </div>
-      <button type="button" id="sheet-cancel" class="sheet-cancel">Cancel</button>
-    </div>
-  </div>
-
-  <section class="notify">
-    <button type="button" id="notify-toggle" class="combo-btn" disabled>Checking…</button>
-    <p class="notify-hint muted" id="notify-hint">Checking whether this device can be reminded…</p>
-  </section>
-
-  <footer class="foot">
-    <a href="/desktop">Desktop view →</a>
-    <span class="muted">v{{ version }}</span>
-  </footer>
 </main>
+
+<nav class="actionbar" aria-label="Log">
+  <button type="button" class="act act-insulin" data-flow="insulin">{{ icon("insulin") }}<span>Insulin</span></button>
+  <button type="button" class="act act-food" data-flow="food">{{ icon("food") }}<span>Food</span></button>
+  <button type="button" class="act act-note" data-flow="note">{{ icon("note") }}<span>Note</span></button>
+</nav>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+{# ---- sheets: shells only, filled by phone.js ---- #}
+{% for id in ["insulin", "food", "search", "item", "note", "detail", "todo", "settings"] %}
+<div id="sheet-{{ id }}" class="sheet" hidden>
+  <div class="sheet-panel" role="dialog" aria-modal="true"></div>
+</div>
+{% endfor %}
+
+{# Server facts the scripts need, in one place. #}
+<script id="boot" type="application/json">{{ {
+  "units": current.units or cfg.web.units,
+  "kinds": kinds|list,
+  "meal_types": meal_types|list,
+  "version": version,
+}|tojson }}</script>
 {% endblock %}
 
 {% block scripts %}

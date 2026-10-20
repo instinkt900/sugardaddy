@@ -104,64 +104,9 @@ button { font: inherit; cursor: pointer; color: inherit; }
 a { color: var(--accent); text-decoration: none; }
 input, select, textarea { font-family: inherit; }
 
-/* ---------------- Phone ---------------- */
+/* ---------------- Shared components ---------------- */
 
-.phone-wrap {
-  max-width: 520px;
-  margin: 0 auto;
-  padding: 16px 16px 48px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.current {
-  border-radius: var(--radius);
-  padding: 12px;
-  text-align: center;
-  background: var(--card);
-  border: 2px solid var(--border);
-}
-.current.in-range { border-color: var(--in); }
-.current.is-low { border-color: var(--low); }
-.current.is-high { border-color: var(--high); }
-.current-value { font-size: 59px; font-weight: 700; line-height: 1; }
-.current-value .trend { font-size: 30px; margin-left: 8px; color: var(--muted); }
-.current-meta { margin-top: 8px; color: var(--muted); font-size: 14px; }
-
-.chart-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px;
-}
-.chart-card.big { padding: 16px; }
-/* The phone chart is sized against the viewport, not its own aspect ratio.
-   Chart.js derives height from width by default, so a wider phone got a TALLER
-   chart and pushed "Log insulin" — the one control the tab exists for — under
-   the navigation bar. Height now scales with the screen it has to fit inside;
-   the clamp keeps it legible on a small phone and stops it sprawling on a tall
-   one. Paired with maintainAspectRatio:false in phone.js: Chart.js fills this
-   box, so the box must state a height. */
-.chart-box { position: relative; height: clamp(96px, 13.5vh, 150px); }
-.chart-box canvas { position: absolute; inset: 0; }
-/* Stands in for the axis labels the phone chart doesn't draw. */
-.chart-span { text-align: center; font-size: 11.5px; padding-top: 4px; letter-spacing: .02em; }
-
-.tabs { display: flex; gap: 8px; }
-.tab {
-  flex: 1;
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--muted);
-  font-weight: 600;
-}
-.tab.active { background: var(--card-2); color: var(--text); border-color: var(--accent); }
-
-.logform form { display: flex; flex-direction: column; gap: 12px; }
-label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-2); }
 input, select, textarea {
   padding: 12px;
   border-radius: var(--radius-sm);
@@ -173,266 +118,335 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 /* Textareas default to a monospace font and free horizontal resizing, neither of
    which belongs in a phone column. */
-textarea { font-family: inherit; resize: vertical; width: 100%; }
+textarea { resize: vertical; width: 100%; }
 
-/* insulin-on-board + action-phase tiles under the glucose tile — informational */
-.io-tiles { display: flex; gap: 10px; }
-.io-tile {
-  flex: 1; min-width: 0;
-  text-align: center;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--card-2);
-  border: 1px solid var(--border);
+.chart-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px;
 }
-.io-tile .io-val { font-size: 18px; font-weight: 700; color: var(--in); line-height: 1.15; }
-.io-tile .io-lab { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.io-tile.muted .io-val { color: var(--muted); font-weight: 400; }
+.chart-card.big { padding: 18px; }
 
-/* transient success confirmation for logging a dose/meal */
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: max(28px, env(safe-area-inset-bottom));
-  transform: translate(-50%, 14px);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 13px 22px;
-  border-radius: 999px;
-  background: var(--in);
-  color: #06210f;
-  font-weight: 700;
-  font-size: 15px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .55);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .2s ease, transform .2s ease;
-}
-.toast::before { content: "✓"; font-size: 16px; font-weight: 800; }
-.toast.show { opacity: 1; transform: translate(-50%, 0); }
-@media (prefers-reduced-motion: reduce) { .toast { transition: opacity .2s ease; transform: translate(-50%, 0); } }
-
-.ts-row { display: flex; gap: 6px; align-items: stretch; }
-/* The composite 24-hour time field stands in for the old datetime-local input. */
-.ts-row .tf { flex: 1; min-width: 0; }
-
-/* 24-hour time field: native date picker + explicit hh:mm boxes. */
+/* 24-hour time field: native date picker + explicit hh:mm boxes (common.js). */
 .tf { display: inline-flex; align-items: stretch; gap: 4px; }
 .tf .tf-date { flex: 1; min-width: 0; }
 .tf .tf-h, .tf .tf-m { width: 3.1em; text-align: center; flex: none; font-variant-numeric: tabular-nums; }
-.tf-sep { display: flex; align-items: center; color: var(--muted); }
+.tf-sep { display: flex; align-items: center; color: var(--text-2); }
 
-.combo { display: flex; gap: 6px; align-items: stretch; }
-.combo-field { position: relative; flex: 1; min-width: 0; }
-.combo-field input[type="text"] { width: 100%; }
-.combo-list {
-  position: absolute;
-  left: 0; right: 0; top: calc(100% + 4px);
-  z-index: 30;
-  margin: 0; padding: 4px;
-  list-style: none;
-  background: var(--card-2);
-  border: 1px solid var(--accent);
-  border-radius: 10px;
-  max-height: 260px;
-  overflow-y: auto;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+.tag {
+  display: inline-block; background: var(--surface-2); color: var(--text-2);
+  border-radius: 999px; padding: 1px 8px; font-size: 12px; margin-left: 4px;
 }
-.combo-list li {
-  display: flex; justify-content: space-between; gap: 10px; align-items: center;
-  padding: 12px; border-radius: 8px; cursor: pointer; font-size: 15px;
-}
-.combo-list li.active, .combo-list li:hover { background: var(--card); }
-.combo-list li .s-carb { color: var(--muted); font-size: 13px; white-space: nowrap; }
-.combo-list li.empty { color: var(--muted); cursor: default; justify-content: flex-start; }
-.combo-btn {
-  white-space: nowrap;
-  padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid var(--accent);
-  background: transparent;
-  color: var(--accent);
-  font-weight: 600;
-  font-size: 14px;
-}
-.combo-btn:disabled { opacity: .4; border-color: var(--border); color: var(--muted); cursor: default; }
-.km-status { margin: 0; font-size: 13px; min-height: 1em; }
 
-/* --- meal plate builder (phone) --- */
-/* Match the insulin form: bare inputs stacked with placeholder-as-label, so
-   #meal-builder needs the column layout the insulin <form> gets from .logform. */
-#meal-builder { display: flex; flex-direction: column; gap: 12px; }
-.field-note { margin: 0 0 -6px; font-size: 12px; }
-
-/* plate items + totals + food entry are one interaction cluster: keep them
-   tight (the 12px #meal-builder rhythm only separates it from the fields). */
-.plate-build { display: flex; flex-direction: column; gap: 8px; }
-
-.plate-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.plate-list li {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--card-2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 8px 10px;
-}
-.plate-list .pi-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.plate-list .pi-macros { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.plate-list .pi-count { width: 58px; padding: 6px; text-align: center; font-size: 15px; }
-.plate-list .pi-del { background: transparent; border: 1px solid var(--low); color: var(--low); border-radius: 6px; padding: 6px 9px; }
-.plate-empty { margin: 0; font-size: 14px; }
-/* collapse when there are no carb/cal totals, so it reserves no empty line */
-.plate-totals { text-align: right; font-size: 13px; }
-.plate-totals:empty { display: none; }
-
-.additem {
-  display: flex; flex-direction: column; gap: 8px;
-  background: var(--card); border: 1px dashed var(--border);
-  border-radius: 10px; padding: 10px;
-}
-.additem-nums { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
-.additem-nums label { flex: 1; min-width: 74px; }
-.additem-nums input { width: 100%; }
-.add-plate-btn { flex: 0 0 auto; min-height: 46px; padding: 0 18px; }
-
-/* The pending-food chip: quiet, amber-ruled like the reference panel, and gone
-   entirely when the queue is empty (the [hidden] attribute does that on its
-   own — nothing here may set display). */
-.pending-chip {
-  align-self: flex-start;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--high);
-  background: rgba(255, 176, 32, .08);
-  color: var(--high);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-.pending-chip::before { content: "◷ "; }
-/* Name over the numbers, matching the meal rows in the edit sheet. */
-.pf-name { font-weight: 600; font-size: 14px; }
-
-/* Experimental bolus reference, sat directly above the log button. Deliberately
-   quieter than .big-btn: the amber rule and card read as "here is a figure to
-   weigh", not as the primary action. Never styled to look decided. */
+/* Experimental bolus reference (SD.refMarkup). Deliberately quieter than the
+   primary button: a soft card with an amber rule reads as "a figure to weigh",
+   never as the decision. Stacked rather than summed into a headline, because
+   the correction, the carb cover and the depot answer three different
+   questions; the depot sits below the rule, outside the sum. */
 .meal-ref {
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--high);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border-left: 3px solid var(--warn);
 }
 .meal-ref[hidden] { display: none; }
-/* One figure per line, each with what produced it. Stacked rather than summed
-   into a headline because the correction, the carb cover and the depot answer
-   three different questions — the total exists only so the first two don't have
-   to be added in your head, and the depot deliberately sits below it, outside
-   the sum. */
 .mr-stack { margin: 0; display: flex; flex-direction: column; gap: 6px; }
-.mr-row {
-  display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; gap: 8px;
-}
-.mr-row dt { font-size: 12px; color: var(--muted); min-width: 86px; }
+.mr-row { display: grid; grid-template-columns: 92px auto 1fr; align-items: baseline; gap: 8px; }
+.mr-row dt { font-size: 13px; color: var(--text-2); }
 .mr-row dd { margin: 0; }
-.mr-num { font-size: 18px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
-.mr-note { font-size: 11.5px; text-align: right; }
-/* The sum of the two rows above it, ruled off from them. */
-.mr-total { border-top: 1px solid var(--border); padding-top: 6px; }
-.mr-total .mr-num { font-size: 21px; }
-/* Active insulin is a fact about the depot, not a term in the sum — dimmer, and
-   below the rule, so it can't read as something already taken off the total. */
-.mr-iob { border-top: 1px dashed var(--border); padding-top: 6px; }
-.mr-iob .mr-num { font-size: 16px; font-weight: 600; color: var(--muted); }
+.mr-num { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mr-note { font-size: 12px; text-align: right; color: var(--text-2); }
+.mr-total { border-top: 1px solid var(--line); padding-top: 6px; }
+.mr-total .mr-num { font-size: 22px; }
+.mr-iob { border-top: 1px dashed var(--line); padding-top: 6px; }
+.mr-iob .mr-num { font-size: 16px; font-weight: 700; color: var(--text-2); }
 /* An incomplete figure is still worth seeing, but it must not read as solid. */
-.mr-partial .mr-total .mr-num { color: var(--muted); font-weight: 600; }
-.mr-why { font-size: 12px; margin-top: 6px; color: var(--high); line-height: 1.45; }
+.mr-partial .mr-total .mr-num { color: var(--text-2); font-weight: 700; }
+.mr-why { font-size: 12.5px; margin-top: 6px; color: var(--warn); line-height: 1.45; }
 .mr-why:empty { display: none; }
-.mr-caveat { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; }
+.mr-caveat { margin: 6px 0 0; font-size: 12px; color: var(--text-2); }
 
-.big-btn {
-  margin-top: 4px;
-  padding: 16px;
-  border-radius: 12px;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 700;
-  font-size: 17px;
+/* ---------------- Phone ---------------- */
+/* Big type, big targets (48px minimum), one primary action per screen, and the
+   thumb's half of the screen kept for the things you press. */
+
+body.phone { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+.ic { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+.app {
+  max-width: 520px; margin: 0 auto;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 16px;
+  display: flex; flex-direction: column; gap: 14px;
 }
-.big-btn:active { transform: translateY(1px); }
-
-.recent h2 { font-size: 16px; margin: 8px 0; }
-.recent h3 { font-size: 13px; color: var(--muted); margin: 12px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
-.entry-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.entry-list li {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 10px; padding: 10px 12px; font-size: 14px;
+.topbar { display: flex; align-items: center; justify-content: space-between; }
+.brand { font-weight: 800; font-size: 18px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
+.brand-drop { width: 12px; height: 12px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--accent); }
+.round-btn {
+  width: 44px; height: 44px; border-radius: 50%; border: none;
+  background: var(--surface); box-shadow: var(--shadow); color: var(--text-2);
+  display: grid; place-items: center;
 }
-/* Entries are held down to edit (phone.js), so the browser's own long-press —
-   text selection, then the context menu — has to be out of the way. */
-.entry-list li { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-.entry-list li:active { border-color: var(--accent); }
-.press-hint { font-size: 11.5px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.round-btn .ic { width: 22px; height: 22px; }
 
-.entry-time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 104px; }
-.entry-main { font-weight: 600; }
-.entry-note { color: var(--muted); font-size: 13px; width: 100%; }
-/* A note is prose rather than a value: normal weight, and it wraps (keeping the
-   line breaks the user typed) instead of stretching the row. */
-.entry-text { flex: 1; min-width: 0; white-space: pre-line; }
-.tag {
-  display: inline-block; background: var(--card-2); color: var(--muted);
-  border-radius: 6px; padding: 1px 7px; font-size: 12px; margin-left: 4px;
+/* The glucose. The only loud colour on the screen, and it means one thing. */
+.hero {
+  border-radius: 24px; padding: 20px 22px 18px;
+  background: var(--surface); box-shadow: var(--shadow);
+  --st: var(--text-2); --st-soft: var(--surface);
+  background: linear-gradient(160deg, var(--st-soft), var(--surface) 75%);
 }
+.hero.st-in { --st: var(--ok); --st-soft: var(--ok-soft); }
+.hero.st-high { --st: var(--warn); --st-soft: var(--warn-soft); }
+.hero.st-low { --st: var(--bad); --st-soft: var(--bad-soft); }
+.hero.stale { --st: var(--text-2); --st-soft: var(--surface-2); }
+.hero-row { display: flex; align-items: baseline; gap: 10px; }
+.hero-val { font-size: 76px; font-weight: 800; line-height: .95; letter-spacing: -.03em; color: var(--st); font-variant-numeric: tabular-nums; }
+.hero.st-none .hero-val { color: var(--text-2); }
+.hero-trend { font-size: 40px; font-weight: 700; color: var(--st); font-family: system-ui, sans-serif; }
+.hero-meta { margin-top: 8px; color: var(--text-2); font-size: 15px; }
+.hero-state { color: var(--st); font-weight: 800; }
 
-/* Push toggle. Sits below the recent entries: it's a setting you touch once per
-   device, so it stays out of the way of logging. */
-.notify { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
-.notify .combo-btn { height: 36px; }
-.notify-hint { margin: 0; font-size: 12px; flex: 1 1 160px; }
+.chart-box { position: relative; height: clamp(100px, 15vh, 160px); }
+.chart-box canvas { position: absolute; inset: 0; }
+.chart-ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); padding: 4px 4px 0; }
 
-.foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 13px; }
+.pills { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pill { background: var(--surface); box-shadow: var(--shadow); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; }
+.pill-val { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+#iob-pill .pill-val { color: var(--insulin); }
+.pill.quiet .pill-val { color: var(--text-2); }
+.pill-lab { font-size: 13px; color: var(--text-2); }
 
-/* --- edit sheet (long-press an entry) --- */
-/* A bottom sheet rather than a centred modal: the thumb is at the bottom of the
-   phone, and the list it came from stays visible above it. */
+.todo-chip {
+  align-self: flex-start; border: none; border-radius: 999px; padding: 10px 16px;
+  background: var(--warn-soft); color: var(--warn); font-weight: 700; font-size: 14px;
+}
+.todo-chip::before { content: "● "; }
+
+.section-title { font-size: 15px; font-weight: 800; margin: 6px 4px 8px; color: var(--text-2); text-transform: uppercase; letter-spacing: .06em; }
+.timeline { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.tl {
+  display: grid; grid-template-columns: 50px 12px 1fr auto; align-items: center; gap: 10px;
+  padding: 14px 14px; min-height: 56px; cursor: pointer;
+  -webkit-user-select: none; user-select: none;
+}
+.tl + .tl { border-top: 1px solid var(--line); }
+.tl:active { background: var(--surface-2); }
+.tl-time { color: var(--text-2); font-variant-numeric: tabular-nums; font-size: 15px; }
+.tl-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-2); }
+.tl-insulin .tl-dot { background: var(--insulin); }
+.tl-meal .tl-dot { background: var(--food); border-radius: 3px; transform: rotate(45deg); }
+.tl-note .tl-dot { background: var(--note); }
+.tl-text { min-width: 0; display: flex; flex-direction: column; }
+.tl-main { font-size: 16px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tl-main b { font-weight: 800; }
+.tl-sub { font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-tag { font-size: 12.5px; color: var(--text-2); background: var(--surface-2); border-radius: 999px; padding: 1px 8px; margin-left: 4px; white-space: nowrap; }
+.tl-tag.warn, .warn { color: var(--warn); }
+.tl-chev { color: var(--text-2); font-size: 22px; opacity: .5; }
+.tl-sep { padding: 8px 14px; font-size: 12px; font-weight: 800; color: var(--text-2); text-transform: uppercase; letter-spacing: .06em; background: var(--surface-2); }
+.tl-empty { padding: 22px 16px; color: var(--text-2); text-align: center; }
+
+/* The three things you came to do, under the thumb. */
+.actionbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  max-width: 520px; margin: 0 auto;
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+.act {
+  border: none; border-radius: 20px; min-height: 68px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font-weight: 800; font-size: 15px; background: var(--surface); box-shadow: var(--shadow);
+}
+.act:active { transform: scale(.97); }
+.act-insulin { color: var(--insulin); }
+.act-food { background: var(--accent); color: var(--accent-ink); }
+.act-note { color: var(--note); }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(100px + env(safe-area-inset-bottom)); z-index: 500;
+  transform: translate(-50%, 14px); opacity: 0; pointer-events: none;
+  padding: 13px 22px; border-radius: 999px; max-width: 90vw;
+  background: var(--text); color: var(--bg); font-weight: 700; font-size: 15px;
+  box-shadow: var(--shadow-lg); transition: opacity .2s ease, transform .2s ease;
+}
+.toast::before { content: "✓  "; color: var(--ok); }
+.toast.bad::before { content: "!  "; color: var(--bad); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* --- sheets --- */
+/* Bottom sheets: the thumb is at the bottom of the phone, and the screen it
+   came from stays visible above. "tall" ones (food, search) take nearly all
+   of it. */
 .sheet {
   position: fixed; inset: 0; z-index: 200;
   display: flex; align-items: flex-end; justify-content: center;
-  background: rgba(0, 0, 0, .55);
+  background: var(--scrim); opacity: 0; transition: opacity .18s ease;
 }
-/* display:flex above would otherwise beat the hidden attribute. */
 .sheet[hidden] { display: none; }
+.sheet.open { opacity: 1; }
 .sheet-panel {
-  width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 12px;
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius) var(--radius) 0 0;
-  padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
+  width: 100%; max-width: 560px; max-height: 92vh; max-height: 92dvh;
+  display: flex; flex-direction: column;
+  background: var(--bg); border-radius: 24px 24px 0 0; box-shadow: var(--shadow-lg);
+  transform: translateY(30px); transition: transform .22s cubic-bezier(.2, .8, .2, 1);
 }
-.sheet-panel h3 { margin: 0; font-size: 17px; }
-.sheet .sf { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.sheet .sf > input, .sheet .sf > select, .sheet .sf > textarea { font-size: 16px; }
-.sheet-actions { display: flex; gap: 10px; }
-.sheet-actions .big-btn { flex: 1; }
-.big-btn.danger { background: transparent; border: 1px solid var(--low); color: var(--low); }
-.sheet-cancel {
-  background: none; border: none; color: var(--muted); font-size: 14px; padding: 4px;
+.sheet.open .sheet-panel { transform: none; }
+.sheet-panel.tall { height: 92vh; height: 92dvh; }
+@media (prefers-reduced-motion: reduce) { .sheet, .sheet-panel { transition: none; } }
+.sheet-head {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
+  padding: 14px 12px 8px;
 }
-/* Plate rows inside the sheet: name on its own line, the numbers under it, so
-   four fields still fit a narrow screen without shrinking to unusable. */
-.sheet .e-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.sheet .e-item {
-  display: flex; flex-direction: column; gap: 6px;
-  background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px;
+.sheet-head h3 { margin: 0; font-size: 18px; font-weight: 800; text-align: center; }
+.head-btn { justify-self: start; border: none; background: none; color: var(--accent); font-weight: 700; font-size: 16px; padding: 10px 8px; min-height: 44px; }
+.sheet-body {
+  flex: 1; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 6px 16px 18px; display: flex; flex-direction: column; gap: 14px;
 }
-.sheet .ei-nums { display: flex; gap: 6px; align-items: stretch; }
-.sheet .ei-nums input { flex: 1; min-width: 0; }
-.sheet .ei-del {
-  border: 1px solid var(--border); background: transparent; color: var(--muted);
-  border-radius: 8px; padding: 0 12px;
+/* A scrolling flex column shrinks its children to fit before it scrolls, and
+   anything with overflow:hidden (the plate list) would shrink to nothing. */
+.sheet-body > * { flex-shrink: 0; }
+.sheet-foot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line); background: var(--bg);
 }
+.sheet-foot .big { flex: 1; }
+.foot-sum { flex: 1; font-size: 15px; }
+.foot-sum b { font-size: 20px; font-weight: 800; }
+
+/* --- buttons --- */
+.primary, .secondary {
+  border: none; border-radius: 16px; min-height: 52px; padding: 0 22px;
+  font-weight: 800; font-size: 17px;
+}
+.primary { background: var(--accent); color: var(--accent-ink); }
+.primary:disabled { opacity: .4; cursor: default; }
+.secondary { background: var(--surface-2); color: var(--text); }
+.primary.big, .secondary.big { min-height: 58px; font-size: 18px; }
+.primary:active, .secondary:active { transform: translateY(1px); }
+.link { align-self: flex-start; border: none; background: none; color: var(--accent); font-weight: 700; font-size: 15px; padding: 8px 0; }
+.link.danger { color: var(--bad); align-self: center; margin-top: 12px; }
+
+/* --- controls --- */
+.seg { display: flex; gap: 4px; padding: 4px; background: var(--surface-2); border-radius: 16px; }
+.seg-btn { flex: 1; border: none; background: none; border-radius: 12px; min-height: 46px; font-weight: 700; font-size: 15px; color: var(--text-2); }
+.seg-btn.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.amount { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; gap: 10px; }
+.amt-btn {
+  height: 64px; border: none; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow);
+  font-size: 32px; font-weight: 600; color: var(--accent);
+}
+.amt-btn:active { background: var(--surface-2); }
+.amt-display { flex-direction: row; align-items: baseline; justify-content: center; gap: 6px; color: var(--text-2); }
+.amt-input {
+  width: 100%; max-width: 160px; background: none; border: none; padding: 0;
+  font-size: 56px; font-weight: 800; text-align: right; color: var(--text); font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  field-sizing: content; min-width: 1.2ch;
+}
+.amt-input::-webkit-outer-spin-button, .amt-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.amt-input:focus { outline: none; }
+.amt-input::placeholder { color: var(--line); }
+.amt-unit { font-size: 22px; font-weight: 700; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips[hidden] { display: none; }
+.chip {
+  border: none; border-radius: 999px; min-height: 44px; padding: 0 16px;
+  background: var(--surface); box-shadow: var(--shadow); font-weight: 700; font-size: 15px;
+}
+.chip.on { background: var(--accent); color: var(--accent-ink); }
+.chip-sub { font-weight: 600; color: var(--text-2); margin-left: 4px; }
+.chip.pulse { animation: pulse .35s ease; }
+@keyframes pulse { 50% { transform: scale(1.08); } }
+.amt-chips { justify-content: center; }
+
+.field-title { margin: 6px 0 -4px; font-size: 14px; font-weight: 800; color: var(--text-2); }
+.field { display: block; font-size: 14px; font-weight: 700; color: var(--text-2); }
+.field input { display: block; width: 100%; margin-top: 6px; font-weight: 400; }
+.hint { margin: 0; font-size: 13.5px; color: var(--text-2); }
+.hint.center { text-align: center; margin-top: 18px; }
+.when-other .tf { width: 100%; }
+.note-input { width: 100%; }
+.ctx-line { margin: -4px 0 0; text-align: center; color: var(--text-2); font-size: 15px; }
+.corr-ref { background: var(--surface-2); border-left: 3px solid var(--warn); border-radius: var(--radius-sm); padding: 10px 12px; display: grid; gap: 2px; }
+.corr-ref[hidden] { display: none; }
+.cr-num { font-size: 20px; font-weight: 800; }
+.cr-text, .cr-cav { font-size: 13px; color: var(--text-2); }
+.switch-row { flex-direction: row; align-items: center; gap: 12px; font-size: 15px; color: var(--text); background: var(--surface); border-radius: var(--radius-sm); padding: 12px 14px; box-shadow: var(--shadow); }
+.switch-row input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+
+/* --- food --- */
+.searchbox {
+  border: none; text-align: left; min-height: 52px; padding: 0 16px; border-radius: 16px;
+  background: var(--surface-2); color: var(--text-2); font-size: 16px;
+}
+.searchbox::before { content: "⌕  "; font-size: 18px; }
+.from-badge { align-self: flex-start; font-size: 13.5px; background: var(--accent-soft); color: var(--accent); padding: 6px 12px; border-radius: 999px; }
+.plate { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.plate-row { display: grid; grid-template-columns: 40px 1fr auto auto; gap: 8px; align-items: center; padding: 12px 14px; min-height: 52px; cursor: pointer; }
+.plate.readonly .plate-row { grid-template-columns: 40px 1fr auto; cursor: default; }
+.plate-row + .plate-row { border-top: 1px solid var(--line); }
+.plate-row:active { background: var(--surface-2); }
+.pr-count { color: var(--text-2); font-weight: 700; font-variant-numeric: tabular-nums; }
+.pr-name { font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pr-carbs { font-weight: 800; font-variant-numeric: tabular-nums; }
+.plate-empty { margin: 0; padding: 18px; text-align: center; color: var(--text-2); background: var(--surface); border-radius: var(--radius); border: 2px dashed var(--line); }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile {
+  border: none; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow);
+  padding: 14px; min-height: 72px; text-align: left; display: flex; flex-direction: column; justify-content: space-between; gap: 4px;
+}
+.tile:active { transform: scale(.98); }
+.tile-name { font-weight: 800; font-size: 15px; line-height: 1.2; }
+.tile-sub { color: var(--text-2); font-size: 13px; }
+.tile-quick { background: var(--accent-soft); }
+.tile-quick .tile-name { color: var(--accent); }
+.food-chips .chip { min-height: 46px; }
+
+.search-head { grid-template-columns: 1fr auto; padding-top: 12px; }
+.search-input { width: 100%; font-size: 17px; border-radius: 14px; }
+.results { list-style: none; margin: 0; padding: 0; }
+.res { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 15px 6px; min-height: 56px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.res:active { background: var(--surface-2); }
+.res-name { font-weight: 700; }
+.res-sub { color: var(--text-2); font-size: 14px; white-space: nowrap; }
+.res-new .res-name { color: var(--accent); }
+.res-empty { padding: 20px; text-align: center; color: var(--text-2); }
+
+.summary { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; }
+.sum-name { font-weight: 800; font-size: 17px; }
+.sum-carbs { color: var(--text-2); }
+.given-line { margin: 0; font-size: 15px; }
+
+/* --- detail --- */
+.detail-hero { display: flex; flex-direction: column; align-items: center; padding: 8px 0 4px; }
+.dh-val { font-size: 52px; font-weight: 800; letter-spacing: -.02em; }
+.dh-sub { color: var(--text-2); text-align: center; }
+.detail-note { margin: 0; background: var(--surface); border-radius: var(--radius-sm); padding: 12px 14px; white-space: pre-line; }
+.insight { display: flex; flex-direction: column; gap: 10px; }
+.insight p { margin: 0; }
+.resp { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.resp > div { background: var(--surface); border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 10px; display: flex; flex-direction: column; align-items: center; }
+.rv { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rl { font-size: 12px; color: var(--text-2); text-align: center; }
+
+/* --- missing carbs, settings --- */
+.todo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.todo-row { display: grid; grid-template-columns: 1fr 78px auto; gap: 8px; align-items: center; background: var(--surface); box-shadow: var(--shadow); border-radius: var(--radius-sm); padding: 10px 12px; }
+.todo-text { display: flex; flex-direction: column; min-width: 0; }
+.todo-text .muted { font-size: 13px; }
+.todo-carbs { width: 100%; text-align: center; }
+.todo-row .secondary { min-height: 46px; padding: 0 14px; font-size: 15px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--surface); box-shadow: var(--shadow); border-radius: var(--radius); padding: 14px 16px; color: var(--text); }
+.set-row p { margin: 2px 0 0; }
+.set-row .secondary { min-height: 44px; font-size: 15px; }
 
 /* ---------------- Desktop ---------------- */
 

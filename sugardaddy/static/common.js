@@ -217,6 +217,84 @@ window.SD = {
       downOnBackdrop = false;
     });
   },
+  // --- experimental bolus reference panel (see sugardaddy/bolus.py) ---------
+  // One implementation for every surface that shows it — the phone's meal
+  // flow, its meal detail, and the desktop meal editor — so the safeguards
+  // can't drift apart between copies. The figure is a cross-check, never an
+  // amount to give: it stays stacked (correction, plate, sum, and the depot
+  // below the rule and outside the sum) and names the inputs it went without.
+  refMarkup(extraClass) {
+    return `<section class="meal-ref ${extraClass || ""}" hidden aria-live="polite">
+      <dl class="mr-stack">
+        <div class="mr-row"><dt>Correction</dt>
+          <dd class="mr-num mr-corr">—</dd><dd class="mr-note mr-corr-note"></dd></div>
+        <div class="mr-row"><dt>This plate</dt>
+          <dd class="mr-num mr-meal">—</dd><dd class="mr-note mr-meal-note"></dd></div>
+        <div class="mr-row mr-total"><dt>Together</dt>
+          <dd class="mr-num mr-total-val">—</dd><dd class="mr-note"></dd></div>
+        <div class="mr-row mr-iob"><dt>Active insulin</dt>
+          <dd class="mr-num mr-iob-val">—</dd>
+          <dd class="mr-note">already on board, not deducted</dd></div>
+      </dl>
+      <div class="mr-why"></div>
+      <p class="mr-caveat">Experimental — your configured ISF/ICR, not advice.</p>
+    </section>`;
+  },
+
+  // Fill a panel built by refMarkup from a /api/bolus-reference payload.
+  // `carbs` is {grams, complete} for the plate as the caller sees it: the plate's
+  // own gaps (an item with no carb count) are only visible client-side, so they
+  // are folded in beside the server's `missing` list. Returns false when the
+  // reference is switched off (no ISF configured), so callers can stop asking.
+  renderRef(el, d, carbs) {
+    if (!el) return false;
+    if (!d.enabled) { el.hidden = true; return false; }
+    const q = (c) => el.querySelector("." + c);
+    const r = d.ref || {};
+    const uStr = (n) => `${Math.round(n * 10) / 10}u`;
+    const signedU = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${uStr(Math.abs(n))}`;
+    const missing = r.missing || [];
+    const why = [];
+    if (missing.includes("glucose")) {
+      // "stale" and "none at all" are both a dropped correction, but they are
+      // different problems — one waits, the other needs the sensor looked at.
+      why.push(d.at_meal ? "there's no glucose reading from the time of this meal"
+             : d.glucose == null ? "there's no glucose reading yet"
+             : "the last glucose reading is too old to correct against");
+    }
+    if (missing.includes("isf")) why.push("no ISF is configured");
+    if (missing.includes("icr")) why.push("no carb ratio is configured");
+    if (missing.includes("carbs")) why.push("no carbs are entered yet");
+    else if (carbs && !carbs.complete) why.push("not every item on the plate has a carb count");
+    // A "*" marks a figure built from only some of its inputs — the same
+    // convention as the desktop table and the report, so an incomplete 1.2u
+    // can't be read as "barely dose here" when the carbs simply aren't in yet.
+    const star = why.length ? "*" : "";
+    el.hidden = false;
+    el.classList.toggle("mr-partial", why.length > 0);
+
+    // Correction, with what it is correcting from and to. Signed: below target
+    // it is negative, and it eats into the carb cover rather than vanishing.
+    q("mr-corr").textContent = r.correction_units == null ? "—" : signedU(r.correction_units);
+    if (d.glucose != null && !d.glucose_stale) {
+      // Both to the precision the unit is conventionally quoted at — JSON
+      // hands back 7.0 as 7, and "at 5.1, target 7" reads like two scales.
+      const g = (n) => n.toFixed(d.units === "mg/dL" ? 0 : 1);
+      q("mr-corr-note").textContent = `${d.at_meal ? "was " : "at "}${g(d.glucose)}, target ${g(d.target)}`;
+    } else {
+      q("mr-corr-note").textContent = d.glucose == null ? "no reading" : "reading too old";
+    }
+    const grams = carbs && carbs.grams != null ? carbs.grams : null;
+    q("mr-meal").textContent = r.carb_units == null ? "—" : uStr(r.carb_units);
+    q("mr-meal-note").textContent = grams == null ? "no carbs entered" : `${grams} g carbs`;
+    q("mr-total-val").textContent = r.suggested_units == null ? "—" : `≈${uStr(r.suggested_units)}${star}`;
+    // Deliberately NOT deducted from the figure above: a plate fully covered
+    // an hour ago would otherwise report 0 u for the carbs going in now.
+    q("mr-iob-val").textContent = r.iob_units ? uStr(r.iob_units) : "none";
+    q("mr-why").textContent = why.length ? `* ${why.join("; ")}` : "";
+    return true;
+  },
+
   // Chart.js plugin: shade the in-range target band behind the series.
   targetBand(low, high) {
     return {

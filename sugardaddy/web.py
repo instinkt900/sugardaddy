@@ -686,10 +686,17 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
     # --- missing carbs (the to-do) ---------------------------------------
 
     @app.get("/api/missing-carbs")
-    def api_missing_carbs():
+    def api_missing_carbs(request: Request):
+        """The to-do, newest first. ``days=N`` keeps only names logged in the
+        last N days — the phone asks for two weeks, because a plate from August
+        is not one anybody can still count, and a chip that always reads "42"
+        stops being read at all. The desktop asks for everything."""
+        days = _opt_num(request.query_params.get("days"))
+        since = now_epoch() - int(days * _DAY) if days else None
         return [
             {**row, "last_used": row["last_ts"] * 1000, "local": local_str(row["last_ts"])}
             for row in db.missing_carb_items()
+            if since is None or row["last_ts"] >= since
         ]
 
     @app.post("/api/missing-carbs")
