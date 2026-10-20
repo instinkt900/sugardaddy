@@ -7,7 +7,10 @@
   <title>{% block title %}Sugar Daddy{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#12141a">
+  <!-- The browser chrome matches the page in either scheme (see style.css). -->
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f3ef">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121416">
+  <link rel="preload" href="/static/fonts/nunito-latin.woff2" as="font" type="font/woff2" crossorigin>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

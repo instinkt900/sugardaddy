@@ -9,11 +9,12 @@
 // It also receives Web Push messages: the server signs and encrypts them itself
 // (see sugardaddy/notify.py), so the payload arriving here has only been relayed
 // by the browser's push service, never read by it.
-const CACHE = "sugardaddy-v5";
+const CACHE = "sugardaddy-v6";
 const SHELL = [
   "/", "/desktop",
   "/manifest.webmanifest",
   "/static/style.css",
+  "/static/fonts/nunito-latin.woff2",
   "/static/common.js",
   "/static/phone.js",
   "/static/desktop.js",

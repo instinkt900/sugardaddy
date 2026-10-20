@@ -130,9 +130,38 @@ window.SD = {
   // correction / basal are distinguishable at a glance without a legend. A small
   // cool-colour arc (sky -> blue -> indigo), kept distinct from the orange meals.
   doseColor(kind) {
-    return kind === "correction" ? "#38bdf8"  // sky, lighter
-         : kind === "basal" ? "#7c6cf0"       // indigo, deeper
-         : "#4f8cff";                         // bolus (and any unset kind)
+    const base = SD.tok("--insulin");
+    return kind === "correction" ? SD.mix(base, "#38bdf8", 0.55)  // toward sky
+         : kind === "basal" ? SD.mix(base, "#4b2fbf", 0.45)       // toward deep indigo
+         : base;                                                  // bolus (and any unset kind)
+  },
+  // --- theme tokens for canvas drawing --------------------------------------
+  // Charts paint on a canvas, which can't use CSS variables, so they read the
+  // tokens out of the stylesheet at draw time. That keeps the palette in one
+  // place (style.css :root) for light and dark alike.
+  tok(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
+  },
+  // A token with an alpha applied. Accepts #rrggbb or an rgba() token as-is.
+  alpha(color, a) {
+    const m = /^#([0-9a-f]{6})$/i.exec(color);
+    if (!m) return color;
+    const n = parseInt(m[1], 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  },
+  // Blend two #rrggbb colours, t of the way from a to b.
+  mix(a, b, t) {
+    const pa = /^#([0-9a-f]{6})$/i.exec(a), pb = /^#([0-9a-f]{6})$/i.exec(b);
+    if (!pa || !pb) return a;
+    const x = parseInt(pa[1], 16), y = parseInt(pb[1], 16);
+    const ch = (sh) => Math.round(((x >> sh) & 255) * (1 - t) + ((y >> sh) & 255) * t);
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  },
+  // Run `cb` when the device flips between light and dark, so a chart drawn
+  // in one palette doesn't sit on a page that has moved to the other.
+  onTheme(cb) {
+    const mq = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+    if (mq && mq.addEventListener) mq.addEventListener("change", cb);
   },
   // The y-axis both charts open at: 0 to 13 mmol/L, growing past the top only
   // when a reading needs the room. Paired with the hard `min: 0`, it fixes the
@@ -198,7 +227,7 @@ window.SD = {
         const yLow = scales.y.getPixelForValue(low);
         const yHigh = scales.y.getPixelForValue(high);
         ctx.save();
-        ctx.fillStyle = "rgba(62,207,142,0.10)";
+        ctx.fillStyle = SD.tok("--ok-soft");
         ctx.fillRect(chartArea.left, yHigh, chartArea.right - chartArea.left, yLow - yHigh);
         ctx.restore();
       },

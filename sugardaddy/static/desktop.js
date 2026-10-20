@@ -44,19 +44,19 @@
       const { ctx, chartArea: a } = chart;
       const label = `${val}`;
       ctx.save();
-      ctx.font = "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.font = `700 13px ${SD.tok("--font")}`;
       const pad = 7, w = ctx.measureText(label).width + pad * 2, h = 20;
       let bx = pt.x + 9;
       if (bx + w > a.right) bx = pt.x - 9 - w; // flip inward near the right edge
       let by = Math.max(a.top, Math.min(pt.y - h / 2, a.bottom - h));
       ctx.beginPath();
       ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = "#4f8cff";
+      ctx.fillStyle = SD.tok("--accent");
       ctx.fill();
       roundRect(ctx, bx, by, w, h, 6);
-      ctx.fillStyle = "#4f8cff";
+      ctx.fillStyle = SD.tok("--accent");
       ctx.fill();
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = SD.tok("--accent-ink");
       ctx.textBaseline = "middle";
       ctx.textAlign = "left";
       ctx.fillText(label, bx + pad, by + h / 2 + 0.5);
@@ -86,22 +86,22 @@
       ctx.moveTo(x, a.top);
       ctx.lineTo(x, a.bottom);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = "rgba(232,234,240,0.4)";
+      ctx.strokeStyle = SD.alpha(SD.tok("--text-2"), 0.6);
       ctx.setLineDash([4, 3]);
       ctx.stroke();
       ctx.setLineDash([]);
       // Time label, kept inside the plot area.
       const label = SD.tableStamp(scales.x.getValueForPixel(x));
-      ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.font = `12px ${SD.tok("--font")}`;
       const pad = 5, w = ctx.measureText(label).width + pad * 2, h = 18;
       let bx = x + 6;
       if (bx + w > a.right) bx = x - 6 - w;
       const by = a.top + 2;
-      ctx.fillStyle = "rgba(28,31,40,0.95)";
-      ctx.strokeStyle = "rgba(232,234,240,0.2)";
+      ctx.fillStyle = SD.tok("--surface");
+      ctx.strokeStyle = SD.tok("--line");
       ctx.fillRect(bx, by, w, h);
       ctx.strokeRect(bx, by, w, h);
-      ctx.fillStyle = "#e8eaf0";
+      ctx.fillStyle = SD.tok("--text");
       ctx.textBaseline = "top";
       ctx.fillText(label, bx + pad, by + 3);
       ctx.restore();
@@ -326,14 +326,14 @@
           // lastValueTag reads it for the "now" badge, which must be a real
           // reading rather than a derived one.
           { type: "line", label: "Sensor readings", data: s.glucose,
-            borderColor: "rgba(139,144,160,0.45)", borderWidth: 1,
+            borderColor: SD.tok("--chart-raw"), borderWidth: 1,
             pointRadius: 0, tension: 0.3, parsing: false, order: 1 },
           // The trend, with that ringing filtered out. This is the line to read,
           // so it gets the accent colour and the weight. Labelled "smoothed"
           // rather than plain "Glucose" on purpose: it is derived, and the legend
           // should not imply it is the measurement.
           { type: "line", label: "Glucose (smoothed)", data: s.smoothed,
-            borderColor: "#4f8cff", borderWidth: 2,
+            borderColor: SD.tok("--accent"), borderWidth: 2.5,
             pointRadius: 0, tension: 0.3, fill: false, parsing: false, order: 0 },
           // order:1 alongside the raw readings — draw stacking only. Where these
           // land in the legend is LEGEND_ORDER's business now, not `order`'s.
@@ -341,15 +341,15 @@
             borderColor: (c) => SD.doseColor(c.raw && c.raw.kind),
             backgroundColor: (c) => SD.doseColor(c.raw && c.raw.kind),
             pointStyle: "triangle", radius: 7, parsing: false, order: 1 },
-          { type: "scatter", label: "Meal", data: s.meals, borderColor: "#ffb020",
-            backgroundColor: "#ffb020", pointStyle: "rectRot", radius: 7,
+          { type: "scatter", label: "Meal", data: s.meals, borderColor: SD.tok("--food"),
+            backgroundColor: SD.tok("--food"), pointStyle: "rectRot", radius: 7,
             parsing: false, order: 1 },
           // Rose, and the only round marker: a note is a different *kind* of
           // thing from a dose or a meal — not a quantity that happened at a time,
           // but a reason the numbers around it may not compare to other days.
           // Distinct enough from the orange meals to pick out at a glance.
-          { type: "scatter", label: "Note", data: s.notes, borderColor: "#f472b6",
-            backgroundColor: "#f472b6", pointStyle: "circle", radius: 6,
+          { type: "scatter", label: "Note", data: s.notes, borderColor: SD.tok("--note"),
+            backgroundColor: SD.tok("--note"), pointStyle: "circle", radius: 6,
             parsing: false, order: 1 },
           // Active-insulin (IOB) curve on its own right-hand axis, translucent so
           // it never hides anything. order:2 puts it at the back of the stack:
@@ -359,13 +359,13 @@
           // give context to. Faint enough to read the shape from, quiet enough
           // that the eye doesn't land on it first.
           { type: "line", label: "Insulin active (u)", data: s.iob, yAxisID: "y1",
-            borderColor: "rgba(167,139,250,0.45)", backgroundColor: "rgba(167,139,250,0.07)",
+            borderColor: SD.alpha(SD.tok("--insulin"), 0.45), backgroundColor: SD.alpha(SD.tok("--insulin"), 0.07),
             borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true, parsing: false, order: 2 },
           // Insulin action *rate* (derivative of IOB) on a hidden auto-scaled
           // axis — dashed line, no fill, so it reads as the "how hard it's working
           // now" companion to the filled on-board area. Shape/timing is the point.
           { type: "line", label: "Insulin activity (u/hr)", data: s.activity, yAxisID: "y2",
-            borderColor: "#2dd4bf", borderWidth: 1.5, borderDash: [5, 4],
+            borderColor: SD.alpha(SD.tok("--insulin"), 0.8), borderWidth: 1.5, borderDash: [5, 4],
             pointRadius: 0, tension: 0.3, fill: false, parsing: false, order: 2 },
         ],
       },
@@ -374,7 +374,7 @@
         interaction: { mode: "nearest", intersect: true },
         plugins: {
           legend: {
-            labels: { color: "#e8eaf0", sort: legendOrder },
+            labels: { color: SD.tok("--text"), sort: legendOrder },
             // Keep Chart.js's own show/hide behaviour and record the result —
             // wrapping the default rather than reimplementing it means the
             // toggle keeps working if the library's version of it changes.
@@ -410,9 +410,9 @@
           // autoscale to the data, so a stale last reading or an ingest gap made
           // the plotted lines shrink away from the (fixed) chart area edges.
           x: { type: "linear", min: data.from, max: data.to,
-               ticks: { color: "#8b90a0", maxTicksLimit: 10,
+               ticks: { color: SD.tok("--text-2"), maxTicksLimit: 10,
                         callback: (v) => SD.axisStamp(v, chartPayload.to - chartPayload.from) },
-               grid: { color: "#2c303c" } },
+               grid: { color: SD.tok("--chart-grid") } },
           // Glucose on the RIGHT, insulin on the left — the opposite of the
           // conventional primary-axis-left layout, and deliberate. The chart ends
           // at now, so the reading being read off it is always the rightmost
@@ -425,11 +425,11 @@
           // on another. A fixed floor makes the height of the trace comparable
           // across every window you load.
           y: { position: "right", min: 0, suggestedMax: SD.chartTop(data.units),
-               ticks: { color: "#8b90a0" }, grid: { color: "#2c303c" },
-               title: { display: true, text: data.units, color: "#8b90a0" } },
-          y1: { position: "left", beginAtZero: true, ticks: { color: "#8b90a0" },
+               ticks: { color: SD.tok("--text-2") }, grid: { color: SD.tok("--chart-grid") },
+               title: { display: true, text: data.units, color: SD.tok("--text-2") } },
+          y1: { position: "left", beginAtZero: true, ticks: { color: SD.tok("--text-2") },
                 grid: { display: false },
-                title: { display: true, text: "insulin (u)", color: "#8b90a0" } },
+                title: { display: true, text: "insulin (u)", color: SD.tok("--text-2") } },
           // hidden: auto-scales the activity curve for shape comparison only
           y2: { position: "left", beginAtZero: true, display: false },
         },
@@ -447,6 +447,14 @@
 
     chart = new Chart(ctx, config);
   }
+  // The palette is read once when the chart is built, so a theme flip rebuilds
+  // it. renderChart() keeps hidden series via prefs, so nothing is lost.
+  SD.onTheme(() => {
+    if (!chart || !chartPayload) return;
+    chart.destroy();
+    chart = null;
+    renderChart(chartPayload);
+  });
 
   // ---- stats ----
   function renderStats(s) {

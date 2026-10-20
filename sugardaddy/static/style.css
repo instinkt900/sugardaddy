@@ -1,31 +1,108 @@
+/* ---------------- Design tokens ---------------- */
+/* One palette for both surfaces, light by day and dark by night: the app
+   follows the device's own setting rather than picking for it. The look is
+   meant to be calm — warm neutrals, soft surfaces instead of outlined boxes —
+   so that the one place colour is loud is the glucose state. Green/amber/red
+   mean in range/high/low and nothing else; insulin, food and notes get their
+   own quieter hues so they never borrow those meanings.
+
+   The older names (--card, --muted, --in…) are kept as aliases so styles
+   written against them keep working; new styles use the new names. */
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/static/fonts/nunito-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
-  --bg: #12141a;
-  --card: #1c1f28;
-  --card-2: #232733;
-  --text: #e8eaf0;
-  --muted: #8b90a0;
-  --accent: #4f8cff;
-  --in: #3ecf8e;
-  --low: #ff5c72;
-  --high: #ffb020;
-  --border: #2c303c;
-  --radius: 14px;
+  color-scheme: light;
+  --bg: #f5f3ef;
+  --surface: #ffffff;
+  --surface-2: #efece6;
+  --surface-3: #e6e2da;
+  --text: #1d2126;
+  --text-2: #5d6570;
+  --line: #e3dfd7;
+  --accent: #14776f;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcefec;
+  --ok: #2d9a5f;   --ok-soft: #e1f3e8;
+  --warn: #c27a0e; --warn-soft: #fbefd9;
+  --bad: #cf3449;  --bad-soft: #fbe3e6;
+  --insulin: #5468d8;
+  --food: #d9822b;
+  --note: #c0558f;
+  --shadow: 0 1px 2px rgba(40, 33, 20, .06), 0 4px 16px rgba(40, 33, 20, .06);
+  --shadow-lg: 0 10px 40px rgba(20, 16, 8, .18);
+  --scrim: rgba(25, 22, 18, .38);
+  --chart-grid: rgba(29, 33, 38, .07);
+  --chart-raw: rgba(93, 101, 112, .35);
+  --radius: 18px;
+  --radius-sm: 12px;
+  --font: "Nunito", ui-rounded, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* aliases for styles written against the first palette */
+  --card: var(--surface);
+  --card-2: var(--surface-2);
+  --muted: var(--text-2);
+  --border: var(--line);
+  --in: var(--ok);
+  --high: var(--warn);
+  --low: var(--bad);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #121416;
+    --surface: #1b1e22;
+    --surface-2: #24282d;
+    --surface-3: #2d3238;
+    --text: #eceef0;
+    --text-2: #9ba2ab;
+    --line: #2b3036;
+    --accent: #45b8ab;
+    --accent-ink: #0b1f1d;
+    --accent-soft: rgba(69, 184, 171, .15);
+    --ok: #4cc585;   --ok-soft: rgba(76, 197, 133, .14);
+    --warn: #f0a93c; --warn-soft: rgba(240, 169, 60, .14);
+    --bad: #ff6b7e;  --bad-soft: rgba(255, 107, 126, .15);
+    --insulin: #8292ff;
+    --food: #f0a35c;
+    --note: #ec84bd;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3);
+    --shadow-lg: 0 12px 40px rgba(0, 0, 0, .55);
+    --scrim: rgba(0, 0, 0, .55);
+    --chart-grid: rgba(236, 238, 240, .07);
+    --chart-raw: rgba(155, 162, 171, .35);
+  }
 }
 
 * { box-sizing: border-box; }
 
+html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.4;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  /* The grey flash Android paints on every tapped element reads as a glitch
+     on soft surfaces; :active states below give the feedback instead. */
+  -webkit-tap-highlight-color: transparent;
 }
 
-.muted { color: var(--muted); }
+.muted { color: var(--text-2); }
 .hidden { display: none !important; }
-button { font: inherit; cursor: pointer; }
+button { font: inherit; cursor: pointer; color: inherit; }
 a { color: var(--accent); text-decoration: none; }
+input, select, textarea { font-family: inherit; }
 
 /* ---------------- Phone ---------------- */
 
@@ -87,13 +164,13 @@ a { color: var(--accent); text-decoration: none; }
 label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
 input, select, textarea {
   padding: 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--card-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--surface-2);
   color: var(--text);
   font-size: 16px;
 }
-input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 /* Textareas default to a monospace font and free horizontal resizing, neither of
    which belongs in a phone column. */
 textarea { font-family: inherit; resize: vertical; width: 100%; }

@@ -441,8 +441,8 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         "scope": "/",
         "display": "standalone",
         "orientation": "portrait",
-        "background_color": "#12141a",
-        "theme_color": "#12141a",
+        "background_color": "#121416",
+        "theme_color": "#121416",
         "icons": [
             {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
             {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
