@@ -649,15 +649,18 @@
   }
 
   // ---- tables: insulin + meals + notes ----
+  // The meal log appears twice, on the Overview and in the Logbook, so it is
+  // addressed by class and each copy gets its own rows (and its own editors).
   function renderTables(entries) {
     const iTable = document.querySelector("#insulin-table tbody");
-    const mTable = document.querySelector("#meal-table tbody");
     const nTable = document.querySelector("#note-table tbody");
     iTable.innerHTML = "";
-    mTable.innerHTML = "";
     nTable.innerHTML = "";
     entries.doses.forEach((d) => iTable.appendChild(doseRow(d)));
-    entries.meals.forEach((m) => mTable.appendChild(mealRow(m)));
+    document.querySelectorAll(".meal-table tbody").forEach((mTable) => {
+      mTable.innerHTML = "";
+      entries.meals.forEach((m) => mTable.appendChild(mealRow(m)));
+    });
     (entries.notes || []).forEach((n) => nTable.appendChild(noteRow(n)));
     if (!(entries.notes || []).length) {
       nTable.innerHTML = `<tr><td colspan="3" class="muted">Nothing noted in this range.</td></tr>`;
@@ -1357,7 +1360,7 @@
 
   // ---- add buttons ----
   document.querySelectorAll(".add-btn[data-add]").forEach((btn) => {
-    btn.addEventListener("click", () => addRow(btn.dataset.add));
+    btn.addEventListener("click", () => addRow(btn.dataset.add, btn.closest(".panel")));
   });
   document.getElementById("add-template").addEventListener("click", () => {
     const wrap = document.getElementById("templates-list");
@@ -1368,9 +1371,10 @@
     openTemplateEditor(div, null);
   });
 
-  function addRow(type) {
+  // `panel` is the clicked button's panel, which picks the meal table to add to.
+  function addRow(type, panel) {
     if (type === "meal") {
-      const tbody = document.querySelector("#meal-table tbody");
+      const tbody = panel.querySelector(".meal-table tbody");
       const tr = document.createElement("tr");
       tbody.prepend(tr);
       openMealEditor(tr, null);
@@ -1460,7 +1464,7 @@
     const todoBusy = [...document.querySelectorAll("#todo-table input[type=number]")]
       .some((i) => i.value !== "" || i === document.activeElement);
     return todoBusy || !!document.querySelector(
-      "#insulin-table input, #insulin-table select, #meal-table input, #meal-table select, " +
+      "#insulin-table input, #insulin-table select, .meal-table input, .meal-table select, " +
       "#note-table input, #note-table textarea, " +
       "#foods-table input, #templates-list input, #templates-list select, #presets-editor input:focus"
     );

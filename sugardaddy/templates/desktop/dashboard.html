@@ -53,25 +53,14 @@
 
     <section class="panel">
       <div class="panel-head">
-        <h2>Daily intake</h2>
-        <div class="day-picker">
-          <div class="range-presets day-presets">
-            <button data-days="3">3d</button>
-            <button data-days="7" class="active">7d</button>
-            <button data-days="30">30d</button>
-          </div>
-          <label class="day-custom">Days
-            <input type="number" id="daily-days" min="1" max="365" step="1" value="7" aria-label="Days to summarize">
-          </label>
-        </div>
+        <h2>Meals</h2>
+        <button class="add-btn" data-add="meal">+ Add</button>
       </div>
-      <div class="table-scroll">
-        <table class="data-table" id="daily-table">
-          <thead><tr><th>Day</th><th>Glucose</th><th>Carbs</th><th>Calories</th><th>Insulin</th><th>Meals</th><th>Doses</th></tr></thead>
-          <tbody></tbody>
-          <tfoot><tr id="daily-avg"></tr></tfoot>
-        </table>
-      </div>
+      <p class="panel-note muted">Editing a meal shows the bolus reference for the corrected plate, judged against the glucose and active insulin at the time it was eaten.</p>
+      <table class="data-table meal-table">
+        <thead><tr><th>Time</th><th>Type</th><th>Meal</th><th>Carbs</th><th>Cal</th><th>Note</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
     </section>
   </div>
 
@@ -83,7 +72,7 @@
         <button class="add-btn" data-add="meal">+ Add</button>
       </div>
       <p class="panel-note muted">Editing a meal shows the bolus reference for the corrected plate, judged against the glucose and active insulin at the time it was eaten.</p>
-      <table class="data-table" id="meal-table">
+      <table class="data-table meal-table">
         <thead><tr><th>Time</th><th>Type</th><th>Meal</th><th>Carbs</th><th>Cal</th><th>Note</th><th></th></tr></thead>
         <tbody></tbody>
       </table>
@@ -112,6 +101,29 @@
         </table>
       </section>
     </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Daily intake</h2>
+        <div class="day-picker">
+          <div class="range-presets day-presets">
+            <button data-days="3">3d</button>
+            <button data-days="7" class="active">7d</button>
+            <button data-days="30">30d</button>
+          </div>
+          <label class="day-custom">Days
+            <input type="number" id="daily-days" min="1" max="365" step="1" value="7" aria-label="Days to summarize">
+          </label>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="daily-table">
+          <thead><tr><th>Day</th><th>Glucose</th><th>Carbs</th><th>Calories</th><th>Insulin</th><th>Meals</th><th>Doses</th></tr></thead>
+          <tbody></tbody>
+          <tfoot><tr id="daily-avg"></tr></tfoot>
+        </table>
+      </div>
+    </section>
   </div>
 
   <!-- ===================== Meals (response) ===================== -->

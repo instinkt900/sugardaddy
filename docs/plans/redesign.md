@@ -116,8 +116,10 @@ desktop, or with that explicit switch.
 
 The single long page splits into sections with a nav:
 
-- **Overview:** the stats, the main chart and the daily intake (as now).
-- **Logbook:** doses, meals and notes in their tables with inline editing. The
+- **Overview:** the stats, the main chart and the meal log (the same table
+  as the Logbook's, so recent meals are visible and editable at a glance).
+- **Logbook:** doses, meals and notes in their tables with inline editing,
+  then the daily intake rollup. The
   meal editor now shows the reference **for existing meals too** (at the
   meal's moment), so "what did that plate ask for, and what does it ask for
   now that I've fixed the chips?" is answered in place.
