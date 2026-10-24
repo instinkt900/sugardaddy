@@ -60,7 +60,7 @@ sugardaddy/            Python package
   static/              style.css, phone.js, desktop.js, common.js, sw.js, vendored libs, icons/
 docker/                Dockerfile, docker-compose.yml
 deploy/                install-server.sh, install-skill.sh, skills/sugardaddy-review/
-docs/plans/            design docs (insulin-awareness.md)
+docs/plans/            design docs (insulin-awareness.md, redesign.md)
 tests/                 plain-assert tests
 config.example.toml    the only tracked config; real config.toml is gitignored
 ```
@@ -108,7 +108,7 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   the back gesture closes it; `SD.guardOpen` swallows the opening press). The
   meal flow's optional dose is **never prefilled from the reference**.
 - **Desktop** (`desktop.js`): views Overview / Logbook / Meals / Library /
-  Phone (hash-routed). The meal editor shows the reference for existing meals
+  Phone / Settings (hash-routed). The meal editor shows the reference for existing meals
   too, evaluated at the meal's own moment.
 - `GET /api/shortcuts` (phone's one-tap meals/foods/dose chips: favourites,
   then most eaten in 30 days), `GET`/`PUT /api/settings/dose-presets` (unset =

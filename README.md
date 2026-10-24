@@ -28,19 +28,46 @@ every reading in a local SQLite file.
 reading to SQLite and drops duplicates. Storage is always UTC and mg/dL. The
 display converts to the configured timezone and unit.
 
-**Phone interface (`/`).** This screen is built for input. It shows the current
-reading, the trend arrow, the active insulin, and where that insulin sits on its
-action curve. Below sits a compact 12-hour chart and three log forms:
+**Phone interface (`/`).** This screen is for the person who wears the sensor.
+It is a status screen, not a stack of forms. It shows the current reading, the
+trend arrow, and a state word (in range, high, or low) on a card tinted by that
+state. Below it are a 12-hour chart, the active insulin, the time of the last
+basal dose, and one timeline of today's doses, meals, and notes. Tap an entry to
+see its detail, then edit or delete it. A meal's detail shows the doses given
+with it, the glucose response so far, and its bolus reference.
 
-- **Insulin** — units, type (bolus, correction, or basal), time, optional note.
-- **Meal** — the plate builder, described below.
+Three big buttons at the bottom open full-screen flows. Each flow is finished
+with taps. The keyboard is the fallback.
+
+- **Insulin** — the kind (bolus, correction, or basal), the amount with − and +
+  steps or a preset chip, and the time ("now", or 15 min, 30 min, or 1 h ago, or
+  an exact time). A note is optional.
+- **Food** — two steps. First, build the plate from saved-meal tiles,
+  favourite-food chips, a search, or a quick "about 40 g" carb estimate. Then
+  check the meal type and the time, read the bolus reference, and enter a dose
+  if one goes with the meal. The dose is never filled in from the reference.
 - **Note** — free text and a time.
 
-**Desktop interface (`/desktop`).** This screen is built for review. A large
-chart plots the glucose line, the target band, the active-insulin curve, and
-markers for doses, meals, and notes. Any date range works. Tables below the chart
-add, edit, and delete rows in place. This screen also manages the food library
-and the saved meals.
+The phone acts on a completed tap, never on the start of a touch. A scroll
+cannot pick an item by accident, and a sheet ignores the finger that opened it.
+
+**Desktop interface (`/desktop`).** This screen is for review and set-up. It has
+these views:
+
+- **Overview** — the stats, a large chart, and the meal log. The chart plots the
+  glucose line, the target band, the active-insulin curve, and markers for doses,
+  meals, and notes. Any date range works.
+- **Logbook** — the doses, meals, and notes, with add, edit, and delete in
+  place, and the daily intake table. The meal editor shows the bolus reference
+  for a past meal at that meal's own time.
+- **Meals** — the 2-hour response after each meal.
+- **Library** — the foods (with a favourite star, a use count, and the last use),
+  the saved meals, and a to-do list of logged foods with no carb count. Fill in a
+  name once, and every blank line with that name gets the value.
+- **Phone** — the dose preset chips, and a preview of the phone's shortcuts.
+- **Settings** — see [Desktop settings](#desktop-settings).
+
+The light or dark theme follows the device setting.
 
 The bold chart line is **smoothed glucose**. The app rejects outliers, then
 averages over about half an hour. This removes the sensor wobble described under
@@ -53,13 +80,17 @@ sandwich, one juice, and two biscuits is a single meal. The app totals the carbs
 and the calories.
 
 **Food library.** Foods are reusable records with a name, a description, carbs,
-and calories. Names are unique and ignore case. Saving a name again updates the
-food that already holds it. Every device sees the same library.
+and calories. Names are unique and ignore case. Every device sees the same
+library. A name typed on the phone that is not in the library is a **one-off**.
+It is logged with the meal, but it joins the library only when "Keep in my
+foods" is on. The favourite foods become the phone's one-tap chips.
 
 **Saved meals.** These are named plates for fast logging. A saved meal links live
 to the food library, so a correction to a food reaches every saved meal that uses
 it. Logged history is a snapshot instead. Editing or deleting a food never
-changes a meal that was already logged.
+changes a meal that was already logged. **Logging a meal never changes a saved
+meal.** To change one, edit it on the desktop, or turn on "Also update the saved
+meal" on the phone.
 
 **Context notes.** A note is a time and some words. It captures what the other
 records cannot: illness, exercise, travel, a bad night. Notes carry no structure
@@ -71,7 +102,7 @@ the reports, next to the day they explain.
 high and low counts. It also measures the 2-hour glucose response after each
 logged meal.
 
-**Daily intake table** (desktop). This table shows average glucose, carbs,
+**Daily intake table** (desktop Logbook). This table shows average glucose, carbs,
 calories, and mealtime insulin per day, plus a per-day average. It excludes basal
 from the insulin total, because one long-acting dose would hide the mealtime
 doses. A `*` marks a day where some meals lack the figure, so the total is a
@@ -93,8 +124,8 @@ log. It never asks for a dose. This feature is off by default. See
 
 **Experimental bolus reference.** When the config holds an insulin sensitivity
 factor, the app runs a textbook formula against doses that were already decided.
-It shows the result on the phone meal form, in the desktop post-meal table, and
-in `report`. The figure covers the plate in front of you: carbs plus correction.
+It shows the result in the phone's food flow and meal detail, in the desktop
+meal editor and post-meal table, and in `report`. The figure covers the plate in front of you: carbs plus correction.
 Insulin still active from earlier doses sits beside it as a second number. The app
 does not subtract one from the other. That subtraction is the textbook rule, and
 it hides a real meal: cover one plate fully, eat again an hour later, and the
@@ -299,7 +330,8 @@ nothing of the data.
    ```bash
    cd docker && docker compose up -d --build
    ```
-5. Open the app on the phone and tap **Enable reminders**.
+5. Open the app on the phone. Tap the gear icon, then **Turn on** next to
+   **Basal reminder**.
 
 Two requirements come first:
 
@@ -354,6 +386,8 @@ the built-in check off and run `sugardaddy notify` from cron instead. Add
 
 One TOML file describes the whole app. Copy `config.example.toml` to
 `config.toml`. Secrets never live in this file. They come from the environment.
+The desktop can override most of these values. See
+[Desktop settings](#desktop-settings).
 
 `[librelink]`
 | key | default | meaning |
@@ -430,6 +464,29 @@ Token: `SUGARDADDY_HA_TOKEN`, from the environment only.
 | `url` | — | VictoriaMetrics base URL, for example `http://192.0.2.20:8428` |
 | `interval_seconds` | 60 | time between syncs (15 or more) |
 | `timeout_seconds` | 10 | HTTP timeout for each request |
+
+### Desktop settings
+
+The desktop **Settings** view edits the configuration while the app runs. A
+saved value is stored in the database and wins over `config.toml`. The change
+applies at once, with no restart, and the view keeps a history of every change.
+The TOML file gives the defaults.
+
+Some values cannot change here. Secrets come from the environment only, because
+the database file gets copied for reviews. The database path, host, and port are
+fixed at startup.
+
+`SUGARDADDY_NO_OUTBOUND=1` keeps the basal reminder and the VictoriaMetrics
+export off, whatever the settings say. Use it on a copy of a live database.
+
+The view also holds these actions:
+
+- VictoriaMetrics: test the connection, sync now, or resend everything.
+- A one-time Home Assistant history import. Paste the token for that import. The
+  app does not store it.
+- CSV export and import for glucose, insulin, meals, and notes. An import shows a
+  dry run first and skips rows that exist, so a second import of the same file
+  changes nothing.
 
 ## Common operations
 

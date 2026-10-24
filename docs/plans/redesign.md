@@ -1,8 +1,8 @@
 # Plan: phone for the patient, desktop for the carer
 
-**Status:** built on the `redesign` branch and running on a local staging
-instance (see "Staging" below). Nothing here is on `master` until it has been
-lived with.
+**Status:** done and on `master` since 2026-10-25. It was built on the
+`redesign` branch, then ran as a beta on the live instance from 2026-10-20 until
+it was accepted (see "Beta on the live instance" below).
 
 ## The problem, boiled down
 
@@ -155,7 +155,7 @@ else, so colour keeps its meaning. The palette is defined once in
 
 ## Staging
 
-`deploy/staging.sh` runs the branch on this machine from the gitignored
+`deploy/staging.sh` runs the working tree on this machine from the gitignored
 `.staging/` directory: a snapshot of the live DB plus a config with no
 LibreLinkUp, notify or VictoriaMetrics sections, so it can't poll the account
 or write anywhere but its own copy. Glucose is frozen at the snapshot time.
@@ -164,24 +164,18 @@ restart.
 
 ## Beta on the live instance
 
-Since 2026-10-20 the live serve host runs the `redesign` branch as a beta, swapped in for master. Before
-the swap it ran `a09f171` (master minus a docs-only commit). A DB backup taken just before the swap is kept
-on the host next to the app, named `sugardaddy-pre-redesign-<timestamp>.db`.
+From 2026-10-20 to 2026-10-25 the live serve host ran the `redesign` branch as a
+beta, swapped in for master (`a09f171`). The beta was accepted and the branch
+merged into master. A DB backup taken just before the swap is kept on the host
+next to the app, named `sugardaddy-pre-redesign-<timestamp>.db`.
 
-**Going back to the old design loses no data.** The redesign's schema changes are additive only (the
-`settings` and `settings_history` tables, and `favourite` on foods and saved meals). Master's code was run
-against a DB migrated and written to by the redesign: every page and API answered, it showed the
-redesign's meals (estimates and one-off lines included), and it could still write. To revert, on the host
-in the repo clone (root-owned, so `sudo` and a `safe.directory` exception):
-
-```
-sudo git -c safe.directory="$PWD" checkout master
-sudo bash deploy/install-server.sh
-```
-
-After a revert, what only the redesign uses stays in the DB, unused: desktop-edited settings (the old code
-reads `config.toml` alone again), favourites, dose buttons. The backup is for damage, not for reverting:
-restoring it would throw away everything logged since the swap.
-
-To ship further redesign changes to the beta: push `redesign`, then on the host `sudo git pull --ff-only`
-and `sudo bash deploy/install-server.sh`.
+**Going back to the old design is still possible and loses no data.** The
+redesign's schema changes are additive only (the `settings` and
+`settings_history` tables, and `favourite` on foods and saved meals). The old
+code was run against a DB migrated and written to by the redesign: every page
+and API answered, it showed the redesign's meals (estimates and one-off lines
+included), and it could still write. To go back, deploy `a09f171` the usual way.
+What only the redesign uses then stays in the DB, unused: desktop-edited settings
+(the old code reads `config.toml` alone again), favourites, dose buttons. The
+backup is for damage, not for going back: restoring it would throw away
+everything logged since the swap.
