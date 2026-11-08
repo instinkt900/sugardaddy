@@ -54,7 +54,8 @@ sugardaddy/            Python package
                        insulin_summary, daily_intake, day_coverage,
                        day_window_start, smooth_glucose, basal_status,
                        carb_coverage, notes_by_day, insulin_timing, meal_timing,
-                       meal_response_groups) — no I/O, no clock, no config
+                       meal_response_groups, dose_presets, note_presets)
+                       — no I/O, no clock, no config
   report.py            `report` command: window + tz resolution, calls analysis, text/JSON
   templates/           base.html, phone/index.html, desktop/dashboard.html, partials/recent.html
   static/              style.css, phone.js, desktop.js, common.js, sw.js, vendored libs, icons/
@@ -90,8 +91,9 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   `save_template: true` (the phone's "Also update the saved meal" switch).
   Quick-carb estimates are plate lines with `tags = "estimate"`.
 - `foods.favourite` / `meal_templates.favourite` mark the phone's shortcuts;
-  `settings` (key/value JSON) holds `phone.dose_presets`. Both are set on the
-  desktop's Library / Phone views.
+  `settings` (key/value JSON) holds `phone.dose_presets` and
+  `phone.note_presets` (an ordered list of quick-note texts; `[]` = none, unset
+  = learned). Both are set on the desktop's Library / Phone views.
 - **Insulin `kind`** is `bolus | correction | basal`. For any insulin-on-board
   math, include only bolus+correction (rapid-acting); basal is a separate depot.
 
@@ -111,8 +113,12 @@ config.example.toml    the only tracked config; real config.toml is gitignored
   Phone / Settings (hash-routed). The meal editor shows the reference for existing meals
   too, evaluated at the meal's own moment.
 - `GET /api/shortcuts` (phone's one-tap meals/foods/dose chips: favourites,
-  then most eaten in 30 days), `GET`/`PUT /api/settings/dose-presets` (unset =
-  learned from 90 days via `analysis.dose_presets`), `GET /api/missing-carbs
+  then most eaten in 30 days; plus `notes`, the quick-note buttons),
+  `GET`/`PUT /api/settings/dose-presets` (unset = learned from 90 days via
+  `analysis.dose_presets`), `GET`/`PUT /api/settings/note-presets` (unset =
+  notes written 2+ times in 90 days via `analysis.note_presets`). A quick note
+  only **fills** the Note sheet's text box (appends if words were typed);
+  logging is still its own tap, `GET /api/missing-carbs
   [?days=N]` + `POST` (fill by name), `GET /api/meal/{id}/insight` (one meal's
   doses, post-meal row and reference)
 - Read APIs: `GET /api/{current,timeline,entries,stats,recent,foods,meal-templates}`

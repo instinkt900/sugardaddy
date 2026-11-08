@@ -366,6 +366,7 @@ body.phone { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 .chip.pulse { animation: pulse .35s ease; }
 @keyframes pulse { 50% { transform: scale(1.08); } }
 .amt-chips { justify-content: center; }
+.quick-notes { margin-bottom: 4px; }
 
 .field-title { margin: 6px 0 -4px; font-size: 14px; font-weight: 800; color: var(--text-2); }
 .field { display: block; font-size: 14px; font-weight: 700; color: var(--text-2); }
@@ -614,6 +615,8 @@ body.phone { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 .preset-kind { font-weight: 800; }
 .preset-chips, .preview-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .preset-add { padding: 7px 10px; font-size: 14px; }
+.note-preset-row { grid-template-columns: 1fr 260px; }
+#note-preset-add { padding: 7px 10px; font-size: 14px; }
 .pchip { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); border-radius: 999px; padding: 5px 12px; font-weight: 700; font-size: 14px; }
 .pchip.fav { background: var(--warn-soft); }
 .pchip-x { border: none; background: none; color: var(--text-2); font-size: 16px; padding: 0 0 0 4px; line-height: 1; }

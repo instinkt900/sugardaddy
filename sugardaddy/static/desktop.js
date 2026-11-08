@@ -1119,8 +1119,10 @@
     Promise.all([
       fetch("/api/settings/dose-presets").then((r) => r.json()),
       fetch("/api/shortcuts").then((r) => r.json()),
-    ]).then(([p, sc]) => {
+      fetch("/api/settings/note-presets").then((r) => r.json()),
+    ]).then(([p, sc, np]) => {
       if (!document.querySelector("#presets-editor input:focus")) renderPresets(p);
+      renderNotePresets(np);
       document.getElementById("preview-meals").innerHTML =
         sc.meals.map((t) => `<span class="pchip${t.favourite ? " fav" : ""}">${t.favourite ? "★ " : ""}${esc(t.name)}</span>`).join("") || `<span class="muted">none yet</span>`;
       document.getElementById("preview-foods").innerHTML =
@@ -1168,6 +1170,40 @@
     }).then((r) => r.json()).then(renderPresets);
   }
   document.getElementById("presets-reset").onclick = () => putPresets(null);
+
+  // Quick notes: an ordered list of short texts, stored server-side like the
+  // dose chips. Unset = the notes written more than once lately; once edited
+  // it is the user's list, and removing the last one leaves no buttons.
+  let notePresets = null;
+  function renderNotePresets(np) {
+    notePresets = np;
+    document.getElementById("note-presets-status").textContent = np.custom
+      ? "Set by hand. A tap on the phone fills in the note; log it as is or add to it first."
+      : np.learned.length
+        ? "Learned from notes you've written more than once in the last 90 days. Add or remove one to set your own."
+        : "None yet. Add the notes you write often (new sensor, run, a medication) and they show as buttons in the phone's Note sheet.";
+    document.getElementById("note-presets-reset").hidden = !np.custom;
+    const box = document.getElementById("note-presets-chips");
+    box.innerHTML = np.presets.map((t, i) =>
+      `<span class="pchip">${esc(t)}<button type="button" class="pchip-x" data-i="${i}" title="Remove">×</button></span>`).join("")
+      || `<span class="muted">no quick notes</span>`;
+    box.querySelectorAll(".pchip-x").forEach((x) => x.onclick = () =>
+      putNotePresets(notePresets.presets.filter((_, i) => i !== +x.dataset.i)));
+  }
+  function putNotePresets(value) {
+    fetch("/api/settings/note-presets", {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ presets: value }),
+    }).then((r) => r.json()).then(renderNotePresets);
+  }
+  const noteAdd = document.getElementById("note-preset-add");
+  noteAdd.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || !notePresets) return;
+    const t = noteAdd.value.trim();
+    if (!t) return;
+    noteAdd.value = "";
+    putNotePresets([...notePresets.presets, t]);
+  });
+  document.getElementById("note-presets-reset").onclick = () => putNotePresets(null);
 
   // ---- settings ----
   // Rendered from /api/settings, which describes every editable field (type,

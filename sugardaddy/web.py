@@ -30,6 +30,7 @@ from sugardaddy.analysis import (
     dose_presets,
     meal_doses,
     meal_moment,
+    note_presets,
     post_meal_responses,
     smooth_glucose,
     summarize,
@@ -645,6 +646,23 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         )
         return {"presets": chosen or learned, "custom": chosen is not None, "learned": learned}
 
+    _NOTE_PRESETS_MAX = 12
+    _NOTE_PRESET_LEN = 80
+
+    def note_presets_context() -> dict:
+        """The phone's quick-note buttons: set on the desktop, or — until
+        someone does — the notes the user has written more than once in the
+        last 90 days. An explicit empty list is a choice (no buttons), so only
+        an unset value falls back to the learned ones."""
+        chosen = db.get_setting("phone.note_presets")
+        now = now_epoch()
+        learned = note_presets(db.notes_between(now - 90 * _DAY, now))
+        return {
+            "presets": chosen if chosen is not None else learned,
+            "custom": chosen is not None,
+            "learned": learned,
+        }
+
     @app.get("/api/shortcuts")
     def api_shortcuts():
         """What the phone offers as one-tap buttons. Favourites (starred on the
@@ -672,6 +690,7 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
         )
         return {
             "doses": presets_context()["presets"],
+            "notes": note_presets_context()["presets"],
             "foods": [food_json(f, usage) for f in (fav + rest)[: max(_SHORTCUT_FOODS, len(fav))]],
             "meals": [
                 meal_template_json(t, meal_usage)
@@ -698,6 +717,32 @@ def create_app(config_path: str, *, start_ingest: bool = True) -> FastAPI:
             clean[kind] = vals[:8]
         db.set_setting("phone.dose_presets", clean)
         return presets_context()
+
+    @app.get("/api/settings/note-presets")
+    def get_note_presets():
+        return note_presets_context()
+
+    @app.put("/api/settings/note-presets")
+    async def put_note_presets(request: Request):
+        """Set the phone's quick-note buttons, in the order given.
+        ``{"presets": null}`` goes back to the learned ones; ``[]`` means none.
+        Whitespace is collapsed and repeats (ignoring case) are dropped."""
+        body = await request.json()
+        raw = body.get("presets")
+        if raw is None:
+            db.set_setting("phone.note_presets", None)
+            return note_presets_context()
+        if not isinstance(raw, list):
+            return JSONResponse({"error": "presets must be a list or null"}, status_code=400)
+        clean: list[str] = []
+        seen: set[str] = set()
+        for x in raw:
+            text = " ".join(str(x or "").split())[:_NOTE_PRESET_LEN]
+            if text and text.lower() not in seen:
+                seen.add(text.lower())
+                clean.append(text)
+        db.set_setting("phone.note_presets", clean[:_NOTE_PRESETS_MAX])
+        return note_presets_context()
 
     # --- missing carbs (the to-do) ---------------------------------------
 

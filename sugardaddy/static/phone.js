@@ -244,7 +244,7 @@
   // ================= data ====================================================
   let current = {};
   let entries = { doses: [], meals: [], notes: [] };
-  let shortcuts = { doses: {}, foods: [], meals: [] };
+  let shortcuts = { doses: {}, foods: [], meals: [], notes: [] };
   let foods = [];
   let templates = [];
 
@@ -794,18 +794,40 @@
   }
 
   // ================= note flow ===============================================
+  // Quick notes (set on the desktop's Phone view) fill the box rather than
+  // logging straight away, so a regular like "run" can become "run, 5 km"
+  // before it's saved. A tap replaces the text when the box is empty or still
+  // holds another quick note, and adds to it when something has been typed —
+  // a tap must never throw away words.
   function openNote(n) {
+    const quick = n ? [] : shortcuts.notes || [];
     openSheet("note", (panel) => {
       sheetFrame(panel, {
         title: n ? "Edit note" : "Note",
-        body: `<textarea class="note-text" rows="4" placeholder="What happened — sick, exercise, a bad night…">${esc(n ? n.text : "")}</textarea>
+        body: `${quick.length ? `<div class="chips quick-notes">${quick.map((q) =>
+            `<button type="button" class="chip" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : ""}
+          <textarea class="note-text" rows="4" placeholder="What happened — sick, exercise, a bad night…">${esc(n ? n.text : "")}</textarea>
           <h4 class="field-title">When</h4>${whenMarkup()}
           ${n ? `<button type="button" class="link danger del-btn">Delete this note</button>` : ""}`,
         foot: `<button type="button" class="primary big log-btn">${n ? "Save" : "Log note"}</button>`,
       });
       const when = whenField(panel, n && n.input);
+      const box = $(".note-text", panel);
+      const qBox = $(".quick-notes", panel);
+      const syncQuick = () => qBox && $$(".chip", qBox).forEach((c) =>
+        c.classList.toggle("on", c.dataset.q === box.value.trim()));
+      if (qBox) {
+        qBox.addEventListener("click", (e) => {
+          const c = e.target.closest(".chip");
+          if (!c) return;
+          const cur = box.value.trim();
+          box.value = !cur || quick.includes(cur) ? c.dataset.q : `${cur}, ${c.dataset.q}`;
+          syncQuick();
+        });
+        box.addEventListener("input", syncQuick);
+      }
       $(".log-btn", panel).addEventListener("click", () => {
-        const text = $(".note-text", panel).value.trim();
+        const text = box.value.trim();
         if (!text) { toast("Write a few words first", true); return; }
         const ts = when.value();
         const req = n ? sendJSON("PATCH", `/api/note/${n.id}`, { text, ts: ts || n.input }) : sendForm("/api/note", { text, ts });

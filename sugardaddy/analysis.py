@@ -307,6 +307,35 @@ def dose_presets(
     return out
 
 
+def note_presets(notes: list[Note], *, limit: int = 6) -> list[str]:
+    """The notes written most often, word for word — the phone's quick-note
+    buttons when nobody has set them on the desktop.
+
+    Matched case-insensitively and on trimmed text, so "Run" and "run " are one
+    habit; shown in the spelling used most (latest wins a tie). Only text seen
+    at least twice counts: a one-off note is not a regular. Ordered by how
+    often, then most recent, because these are words, not a scale.
+    """
+    groups: dict[str, dict] = {}
+    for n in sorted(notes, key=lambda n: n.ts_utc):
+        text = " ".join((n.text or "").split())
+        if not text:
+            continue
+        g = groups.setdefault(text.lower(), {"count": 0, "last": 0, "spell": {}})
+        g["count"] += 1
+        g["last"] = n.ts_utc
+        g["spell"][text] = g["spell"].get(text, 0) + 1
+    ranked = sorted(
+        (g for g in groups.values() if g["count"] >= 2),
+        key=lambda g: (-g["count"], -g["last"]),
+    )
+    # dicts keep insertion order, so on a tie max() keeps the earliest — walk
+    # the spellings reversed so the latest spelling wins instead.
+    return [
+        max(reversed(list(g["spell"])), key=lambda t: g["spell"][t]) for g in ranked[:limit]
+    ]
+
+
 def _nearest(ordered: list[GlucoseReading], ts: int, window: int) -> GlucoseReading | None:
     best = None
     best_gap = window + 1
