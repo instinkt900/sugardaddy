@@ -209,7 +209,7 @@ figures, which is a fact about the plate, not the food.
 The one exception to "deterministic analysis only" is `notes` — the user's own
 free text, grouped by local day (same day key as `daily`) and printed verbatim
 ahead of every numeric section. It has no arithmetic and takes none. Note that
-the **"absent data means missed" convention does NOT extend to notes**: no note
+the **"absent data probably means missed" reading does NOT extend to notes**: no note
 on a day means nobody wrote one, not that nothing happened — the review skill
 spells this out because the opposite reading fabricates a clinical claim.
 

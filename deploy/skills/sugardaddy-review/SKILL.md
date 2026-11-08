@@ -164,7 +164,7 @@ semicolons, no contractions. Two deliberate departures from that skill:
 1. **How the system collects this data** — bullets. The CGM and that readings are
    automatic. That the user logs insulin and meals by hand. That the analysis is
    fixed arithmetic, not a model or a dose calculator. The purpose of the system.
-   **That the record is complete** (see the guardrail below). Units and target
+   **That the log aims to be complete but is manual, so errors and misses can happen** (see the guardrail below). Units and target
    range.
 2. **Overall control** — headline metrics table with a *target* column so the
    reader can judge each figure without knowing the norms. Then by-day and
@@ -218,12 +218,14 @@ recorded fact, not calculation — treat them accordingly.
   clinician calculated dose figures derived from placeholder ISF/ICR invites them
   to read those figures as validated. State in the limits section that the report
   omits an experimental calculation running on unvalidated placeholder values.
-- **An absent entry means a missed event, not a missed log.** The user maintains
-  the record as authoritative and re-runs the report after fixing any gap. So
-  state gaps as findings with consequences ("the patient missed a basal dose on
-  <date>"), never as ambiguity ("it cannot be determined whether..."). Say this
-  convention explicitly in section 1 so the clinician knows absence is evidence.
-  Keep it separate from timestamp precision, which *is* a real limit.
+- **An absent entry is probably a missed event, but it is not proof.** The user
+  makes every effort to keep the log complete and fixes any gap they find before
+  a report runs, but manual logging cannot be 100% complete: errors and misses
+  happen. So treat a gap as meaningful and report what the log shows ("the log
+  shows no basal dose on <date>"), not as certain fact ("the patient missed a
+  basal dose") and not as a shrug ("it cannot be determined whether..."). Say this
+  explicitly in section 1 so the clinician can weigh absence as strong evidence
+  rather than proof, and name manual-entry error as a limit in section 5.
 - **Context notes belong in the report, as the patient's own account.** Where a
   note bears on a figure the clinician is reading, put it beside that figure
   ("the patient recorded a fever on 30 and 31 July" next to those days). Summarise
@@ -351,9 +353,9 @@ inform what you call a pattern.
 
 They are the only qualitative input in the report, so they need their own care:
 
-- **Absent notes mean nothing.** The "an absent entry means a missed event"
-  convention is about insulin and meals, where the user maintains the log as
-  authoritative. It does **not** extend here. A week with no notes is a week
+- **Absent notes mean nothing.** The "an absent entry is probably a missed event"
+  reading is about insulin and meals, where the user tries to log every event. It
+  does **not** extend here. A week with no notes is a week
   nobody wrote anything down in — never conclude from an empty `notes` that the
   patient was well, unstressed, or inactive.
 - A note is **the user's own account**, not a measurement. Attribute it ("the
